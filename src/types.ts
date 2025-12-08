@@ -18,11 +18,9 @@ export type OpenAiGlobals<
   // state
   toolInput: ToolInput;
   toolOutput: ToolOutput | null;
-  toolResponse: ToolResponseEnvelope<ToolOutput, ToolResponseMetadata> | null;
   toolResponseMetadata: ToolResponseMetadata | null;
   widgetState: WidgetState | null;
   setWidgetState: (state: WidgetState) => Promise<void>;
-  view: ViewDescriptor | null;
 };
 
 // currently copied from types.ts in chatgpt/web-sandbox.
@@ -34,7 +32,6 @@ type API = {
 
   // Layout controls
   requestDisplayMode: RequestDisplayMode;
-  requestModal?: RequestModal;
 };
 
 export type UnknownObject = Record<string, unknown>;
@@ -72,40 +69,8 @@ export type RequestDisplayMode = (args: { mode: DisplayMode }) => Promise<{
   mode: DisplayMode;
 }>;
 
-export type ViewDescriptor = {
-  mode: string;
-  params?: UnknownObject;
-};
-
-export type ModalAnchor = {
-  top: number;
-  left: number;
-  width: number;
-  height: number;
-};
-
-export type RequestModalArgs = {
-  title: string;
-  params?: UnknownObject;
-  anchor?: ModalAnchor;
-};
-
-export type RequestModal = (args: RequestModalArgs) => Promise<void>;
-
 export type CallToolResponse = {
   result: string;
-};
-
-export type ToolResponseEnvelope<
-  ToolOutput = UnknownObject,
-  ToolResponseMetadata = UnknownObject
-> = {
-  toolName?: string;
-  status?: "success" | "error" | string;
-  content?: UnknownObject;
-  structuredContent?: ToolOutput | null;
-  metadata?: ToolResponseMetadata | null;
-  error?: UnknownObject | null;
 };
 
 /** Calling APIs */
