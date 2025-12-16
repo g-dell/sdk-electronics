@@ -1,12 +1,8 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { useOpenAiGlobal } from "../use-openai-global";
 import { useWidgetState } from "../use-widget-state";
-
-type JsonPanelProps = {
-  label: string;
-  value: unknown;
-};
+import { AvocadoIcon, BreadIcon, EggIcon, JarIcon, TomatoIcon } from "./icons";
 
 type CartItem = {
   name: string;
@@ -20,47 +16,79 @@ type CartWidgetState = {
   [key: string]: unknown;
 };
 
-function usePrettyJson(value: unknown): string {
-  return useMemo(() => {
-    if (value === undefined || value === null) {
-      return "null";
-    }
-
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch (error) {
-      return `<<unable to render: ${error}>>`;
-    }
-  }, [value]);
-}
-
-function JsonPanel({ label, value }: JsonPanelProps) {
-  const pretty = usePrettyJson(value);
-
-  return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-900/70 p-4 shadow-[0_10px_25px_rgba(15,23,42,0.45)] backdrop-blur">
-      <header>
-        <p className="text-sm font-semibold uppercase tracking-widest text-slate-400">
-          {label}
-        </p>
-      </header>
-      <pre className="overflow-auto rounded-lg bg-black/40 p-3 font-mono text-xs leading-snug text-slate-100">
-        {pretty}
-      </pre>
-    </section>
-  );
-}
-
 const createDefaultCartState = (): CartWidgetState => ({
   items: [],
 });
 
+const suggestedItems = [
+  {
+    name: "Eggs",
+    description: "Breakfast basics",
+    Icon: EggIcon,
+  },
+  {
+    name: "Bread",
+    description: "Fresh and toasty",
+    Icon: BreadIcon,
+  },
+  {
+    name: "Tomatoes",
+    description: "Juicy and bright",
+    Icon: TomatoIcon,
+  },
+  {
+    name: "Avocados",
+    description: "Perfectly ripe",
+    Icon: AvocadoIcon,
+  },
+];
+
+const iconMatchers = [
+  { keywords: ["egg", "eggs"], Icon: EggIcon },
+  { keywords: ["bread"], Icon: BreadIcon },
+  { keywords: ["tomato", "tomatoes"], Icon: TomatoIcon },
+  { keywords: ["avocado", "avocados"], Icon: AvocadoIcon },
+];
+
 function App() {
-  const toolInput = useOpenAiGlobal("toolInput");
   const toolOutput = useOpenAiGlobal("toolOutput");
   const widgetState = useOpenAiGlobal("widgetState");
-  const [cartState, setCartState] = useWidgetState<CartWidgetState>(createDefaultCartState);
+  const [cartState, setCartState] = useWidgetState<CartWidgetState>(
+    createDefaultCartState
+  );
   const cartItems = Array.isArray(cartState?.items) ? cartState.items : [];
+  const animationStyles = `
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  `;
+
+  function addItem(name: string) {
+    if (!name) {
+      return;
+    }
+
+    setCartState((prevState) => {
+      const baseState: CartWidgetState = prevState ?? {};
+      const items = Array.isArray(baseState.items)
+        ? baseState.items.map((item) => ({ ...item }))
+        : [];
+      const idx = items.findIndex((item) => item.name === name);
+
+      if (idx === -1) {
+        items.push({ name, quantity: 1 });
+      } else {
+        const current = items[idx];
+        items[idx] = {
+          ...current,
+          quantity: (current.quantity ?? 0) + 1,
+        };
+      }
+
+      return { ...baseState, items };
+    });
+  }
 
   function adjustQuantity(name: string, delta: number) {
     if (!name || delta === 0) {
@@ -98,7 +126,6 @@ function App() {
   const lastToolOutputRef = useRef<string>("__tool_output_unset__");
 
   useEffect(() => {
-
     // Merge deltas (toolOutput) into the latest widgetState without
     // and then update cartState. Runs whenever toolOutput changes.
     if (toolOutput == null) {
@@ -125,7 +152,7 @@ function App() {
     const incomingItems = Array.isArray(
       (toolOutput as { items?: unknown } | null)?.items
     )
-      ? ((toolOutput as { items?: CartItem[] }).items ?? [])
+      ? (toolOutput as { items?: CartItem[] }).items ?? []
       : [];
 
     // Since we set `widgetSessionId` on the tool response, when the tool response returns
@@ -153,33 +180,50 @@ function App() {
     // Update cartState with the new state that includes the new items
     // Updating cartState automatically updates window.openai.widgetState.
     setCartState(nextState);
-
   }, [toolOutput]);
 
-  const panels: JsonPanelProps[] = [
-    { label: "window.openai.toolInput", value: toolInput },
-    { label: "window.openai.toolOutput", value: toolOutput },
-    { label: "window.openai.widgetState", value: cartState },
-  ];
+  function getIconForItem(name: string) {
+    const words = name
+      .toLowerCase()
+      .replace(/[^a-z]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
+    for (const entry of iconMatchers) {
+      if (entry.keywords.some((keyword) => words.includes(keyword))) {
+        return entry.Icon;
+      }
+    }
+    return JarIcon;
+  }
 
   const itemCards = cartItems.length ? (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="space-y-3">
       {cartItems.map((item) => (
         <div
           key={item.name}
-          className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-800/70 p-4"
+          className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 p-3"
         >
-          <div>
-            <p className="text-base font-semibold text-white">{item.name}</p>
-            <p className="text-sm text-slate-300">
-              Quantity: <span className="font-mono">{item.quantity}</span>
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm">
+              {(() => {
+                const Icon = getIconForItem(item.name);
+                return <Icon className="h-6 w-6" />;
+              })()}
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                {item.name}
+              </p>
+              <p className="text-xs text-slate-500">
+                Qty <span className="font-mono">{item.quantity ?? 0}</span>
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => adjustQuantity(item.name, -1)}
-              className="h-8 w-8 rounded-full border border-white/30 text-lg font-bold text-white transition hover:bg-white/20"
+              className="h-8 w-8 rounded-full border border-slate-300 text-lg font-semibold text-slate-700 transition hover:bg-white"
               aria-label={`Decrease ${item.name}`}
             >
               -
@@ -187,7 +231,7 @@ function App() {
             <button
               type="button"
               onClick={() => adjustQuantity(item.name, 1)}
-              className="h-8 w-8 rounded-full border border-white/30 text-lg font-bold text-white transition hover:bg-white/20"
+              className="h-8 w-8 rounded-full border border-slate-300 text-lg font-semibold text-slate-700 transition hover:bg-white"
               aria-label={`Increase ${item.name}`}
             >
               +
@@ -197,26 +241,101 @@ function App() {
       ))}
     </div>
   ) : (
-    <p className="rounded-2xl border border-dashed border-white/20 bg-slate-800/50 p-6 text-center text-sm text-slate-300">
-      The cart is empty. Tool calls that return widget state will populate this
-      section.
-    </p>
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
+      Your cart is empty. Add a few items to get started.
+    </div>
   );
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-slate-900 via-slate-950 to-black">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6 text-white md:px-6 lg:px-8">
-        <section className="space-y-3">
-          <header>
-            <p className="text-sm font-semibold uppercase tracking-widest text-slate-400">
-              Cart Items
-            </p>
-          </header>
-          {itemCards}
-        </section>
-        {panels.map((panel) => (
-          <JsonPanel key={panel.label} label={panel.label} value={panel.value} />
-        ))}
+    <div
+      className="min-h-screen w-full bg-white text-slate-900 bg-[radial-gradient(circle_at_top_left,_#fff7ed_0,_#ffffff_55%),radial-gradient(circle_at_bottom_right,_#eef2ff_0,_#ffffff_45%)]"
+      style={{
+        fontFamily: '"Trebuchet MS", "Gill Sans", "Lucida Grande", sans-serif',
+      }}
+    >
+      <style>{animationStyles}</style>
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-8 md:px-6 lg:px-8">
+        <header
+          className="space-y-2"
+          style={{ animation: "fadeUp 0.6s ease-out both" }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+            Simple cart
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Pick a few essentials
+          </h1>
+          <p className="text-sm text-slate-500">
+            Update your cart through the chat or tap to add a suggestion or
+            adjust quantities.
+          </p>
+        </header>
+
+        <div
+          className="grid gap-8 lg:grid-cols-[1.4fr_1fr]"
+          style={{
+            animation: "fadeUp 0.7s ease-out both",
+            animationDelay: "80ms",
+          }}
+        >
+          <section className="space-y-4">
+            <header className="flex items-center justify-between">
+              <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">
+                Suggested items
+              </p>
+            </header>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {suggestedItems.map(({ name, description, Icon }, index) => (
+                <div
+                  key={name}
+                  className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                  style={{
+                    animation: "fadeUp 0.5s ease-out both",
+                    animationDelay: `${120 + index * 80}ms`,
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm">
+                      <Icon className="h-7 w-7" />
+                    </div>
+                    <div>
+                      <p className="text-base font-semibold text-slate-900">
+                        {name}
+                      </p>
+                      <p className="text-xs text-slate-500">{description}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addItem(name)}
+                    className="rounded-full bg-amber-200 px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:bg-amber-300"
+                  >
+                    Add
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <header className="flex items-center justify-between">
+              <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">
+                Cart
+              </p>
+              <span className="text-xs text-slate-400">
+                {cartItems.length} items
+              </span>
+            </header>
+            {itemCards}
+            <button
+              type="button"
+              disabled={cartItems.length === 0}
+              className="w-full rounded-2xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-500 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              Check out
+            </button>
+          </section>
+        </div>
       </div>
     </div>
   );
