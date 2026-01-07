@@ -28,7 +28,7 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
 
 - [ ]  **Configurazione del servizio su Render**: Crea un nuovo "Web Service" su Render.
     - [ ]  **Root Directory**: Imposta la "Root Directory" alla radice del tuo repository (`.`).
-    - [ ]  **Build Command**: `pnpm install --prefix . && pnpm run build && pip install -r pizzaz_server_python/requirements.txt`
+    - [ ]  **Build Command**: `pnpm install --prefix . && pnpm run build && pip install -r pizzaz_server_python/requirements.txt` (Errore "ModuleNotFoundError: No module named 'duckdb'" risolto aggiungendo `duckdb` a `requirements.txt`.)
     - [ ]  **Start Command**: `uvicorn pizzaz_server_python.main:app --host 0.0.0.0 --port $PORT`
     - [ ]  **Variabili d'ambiente**: Aggiungi `MOTHERDUCK_TOKEN` (con il tuo token), `MCP_ALLOWED_HOSTS`, `MCP_ALLOWED_ORIGINS` (con i domini appropriati, incluso quello di Render) e altre variabili necessarie.
 
