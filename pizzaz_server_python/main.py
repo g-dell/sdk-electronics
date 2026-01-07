@@ -10,6 +10,11 @@ handlers into an HTTP/SSE stack so you can run the server with uvicorn on port
 from __future__ import annotations
 
 import os
+import duckdb
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import lru_cache
@@ -18,6 +23,8 @@ from typing import Any, Dict, List
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
+from starlette.staticfiles import StaticFiles
+from starlette.routing import Mount
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -34,6 +41,26 @@ class PizzazWidget:
 
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+
+def get_motherduck_connection():
+    md_token = os.getenv("MOTHERDUCK_TOKEN")
+    if not md_token:
+        raise ValueError("MOTHERDUCK_TOKEN not found in environment variables.")
+    # Connect to MotherDuck, specifying the database and schema
+    con = duckdb.connect(f"md:app_gpt_elettronica?motherduck_token={md_token}")
+    con.execute("SET search_path TO main;")
+    return con
+
+
+async def get_products_from_motherduck():
+    try:
+        with get_motherduck_connection() as con:
+            # Assuming 'prodotti_xeel_shop' is the table name in the 'main' schema
+            products_df = con.execute("SELECT * FROM prodotti_xeel_shop").fetchdf()
+            return products_df.to_dict(orient="records")
+    except Exception as e:
+        print(f"Error fetching products from MotherDuck: {e}")
+        return []
 
 
 @lru_cache(maxsize=None)
@@ -98,8 +125,16 @@ widgets: List[PizzazWidget] = [
         html=_load_widget_html("pizzaz-shop"),
         response_text="Rendered the Pizzaz shop!",
     ),
+    PizzazWidget(
+        identifier="product-list",
+        title="List Products from MotherDuck",
+        template_uri="ui://widget/product-list.html",
+        invoking="Fetching products",
+        invoked="Fetched products from MotherDuck",
+        html="<p>Product list is being rendered...</p>",
+        response_text="Here are the products from MotherDuck!",
+    ),
 ]
-
 
 MIME_TYPE = "text/html+skybridge"
 
@@ -269,6 +304,21 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             )
         )
 
+    if req.params.name == "product-list":
+        products = await get_products_from_motherduck()
+        return types.ServerResult(
+            types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text=widget.response_text,
+                    )
+                ],
+                structuredContent={"products": products},
+                _meta=_tool_invocation_meta(widget),
+            )
+        )
+
     arguments = req.params.arguments or {}
     try:
         payload = PizzaInput.model_validate(arguments)
@@ -307,6 +357,8 @@ mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resou
 
 
 app = mcp.streamable_http_app()
+
+app.mount("/assets", StaticFiles(directory=ASSETS_DIR, html=True), name="assets")
 
 try:
     from starlette.middleware.cors import CORSMiddleware

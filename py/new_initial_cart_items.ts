@@ -1,4 +1,4 @@
-const INITIAL_CART_ITEMS: CartItem[] = [
+export const INITIAL_CART_ITEMS: CartItem[] = [
 {
   id: "AVphzgbJLJeJML43fA0o",
   name: "Sanus VLF410B1 10-Inch Super Slim Full-Motion Mount for 37 - 84 Inches TV's",
