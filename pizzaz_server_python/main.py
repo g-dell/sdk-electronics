@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import mcp.types as types
+from fastapi import Request, FastAPI
+from fastapi.responses import HTMLResponse, JSONResponse
 from mcp.server.fastmcp import FastMCP
 from starlette.staticfiles import StaticFiles
 from starlette.routing import Mount
@@ -216,6 +218,16 @@ def _tool_invocation_meta(widget: PizzazWidget) -> Dict[str, Any]:
         "openai/toolInvocation/invoked": widget.invoked,
     }
 
+
+@app.get("/openapi.json", response_class=JSONResponse)
+async def get_openapi_json():
+    return mcp._mcp_server.get_openapi_schema()
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    with open(ASSETS_DIR / "index.html", "r") as f:
+        html_content = f.read()
+    return HTMLResponse(content=html_content)
 
 @mcp._mcp_server.list_tools()
 async def _list_tools() -> List[types.Tool]:
