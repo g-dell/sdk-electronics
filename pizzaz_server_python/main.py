@@ -185,6 +185,9 @@ mcp = FastMCP(
     transport_security=_transport_security_settings(),
 )
 
+app = mcp.streamable_http_app()
+
+app.mount("/assets", StaticFiles(directory=ASSETS_DIR, html=True), name="assets")
 
 TOOL_INPUT_SCHEMA: Dict[str, Any] = {
     "type": "object",
@@ -197,6 +200,7 @@ TOOL_INPUT_SCHEMA: Dict[str, Any] = {
     "required": ["pizzaTopping"],
     "additionalProperties": False,
 }
+
 
 
 def _resource_description(widget: PizzazWidget) -> str:
@@ -368,9 +372,6 @@ mcp._mcp_server.request_handlers[types.CallToolRequest] = _call_tool_request
 mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resource
 
 
-app = mcp.streamable_http_app()
-
-app.mount("/assets", StaticFiles(directory=ASSETS_DIR, html=True), name="assets")
 
 try:
     from starlette.middleware.cors import CORSMiddleware

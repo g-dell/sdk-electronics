@@ -28,23 +28,14 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
 
 - [x]  **Configurazione del servizio su Render**: Crea un nuovo "Web Service" su Render.
     - [ ]  **Root Directory**: Imposta la "Root Directory" alla radice del tuo repository (`.`).
-    - [ ]  **Build Command**: `pnpm install --prefix . && pnpm run build && pip install -r pizzaz_server_python/requirements.txt` (Errore "ModuleNotFoundError: No module named 'duckdb'" risolto aggiungendo `duckdb` a `requirements.txt`.)
-    - [ ]  **Start Command**: `uvicorn pizzaz_server_python.main:app --host 0.0.0.0 --port $PORT` (Errore 404 risolto aggiungendo una rotta root a FastAPI per servire `index.html`. Attualmente in fase di debug per la connessione a ChatGPT.)
+    - [x]  **Build Command**: `pnpm install --prefix . && pnpm run build && pip install -r pizzaz_server_python/requirements.txt` (Errore "ModuleNotFoundError: No module named 'duckdb'" risolto aggiungendo `duckdb` a `requirements.txt`.)
+    - [ ]  **Start Command**: `uvicorn pizzaz_server_python.main:app --host 0.0.0.0 --port $PORT` (Errore 404 risolto aggiungendo una rotta root a FastAPI per servire `index.html`. **Ancora debug: NameError: name 'app' is not defined. Sembra che le ultime modifiche non siano state deployate su Render, necessaria verifica del file su Render e nuovo deployment.**)
     - [x]  **Variabili d'ambiente**: Aggiungi `MOTHERDUCK_TOKEN` (con il tuo token), `MCP_ALLOWED_HOSTS` (deve includere `sdk-electronics.onrender.com`), `MCP_ALLOWED_ORIGINS` (deve includere `https://chat.openai.com` e `https://sdk-electronics.onrender.com`) e altre variabili necessarie.
 
 ### 4.2 Configurazione di ChatGPT
 
 - [ ]  **Creare una Custom GPT**: Seguire le istruzioni nell'interfaccia di ChatGPT per creare una nuova Custom GPT.
-- [x]  **Configurazione del servizio su Render**: Crea un nuovo "Web Service" su Render.
-    - [ ]  **Root Directory**: Imposta la "Root Directory" alla radice del tuo repository (`.`).
-    - [ ]  **Build Command**: `pnpm install --prefix . && pnpm run build && pip install -r pizzaz_server_python/requirements.txt` (Errore "ModuleNotFoundError: No module named 'duckdb'" risolto aggiungendo `duckdb` a `requirements.txt`.)
-    - [ ]  **Start Command**: `uvicorn pizzaz_server_python.main:app --host 0.0.0.0 --port $PORT` (Errore 404 risolto aggiungendo una rotta root a FastAPI per servire `index.html`. Attualmente in fase di debug per la connessione a ChatGPT.)
-    - [x]  **Variabili d'ambiente**: Aggiungi `MOTHERDUCK_TOKEN` (con il tuo token), `MCP_ALLOWED_HOSTS` (deve includere `sdk-electronics.onrender.com`), `MCP_ALLOWED_ORIGINS` (deve includere `https://chat.openai.com` e `https://sdk-electronics.onrender.com`) e altre variabili necessarie.
-
-### 4.2 Configurazione di ChatGPT
-
-- [ ]  **Creare una Custom GPT**: Seguire le istruzioni nell'interfaccia di ChatGPT per creare una nuova Custom GPT.
-- [x]  **Configurare un'azione personalizzata**: Aggiungere un'azione al Custom GPT che punta all'URL corretto del manifest OpenAPI: `https://sdk-electronics.onrender.com/openapi.json`. **(CRITICO: L'URL `https://sdk-electronics.onrender.com/sse` è ERRATO per il manifest OpenAPI, deve essere cambiato. Richiesto feedback su `MCP_ALLOWED_HOSTS` e `MCP_ALLOWED_ORIGINS` e accesso a `/openapi.json` nel browser.)** Aggiungere un'azione al Custom GPT che punta al server Python deployato su Render. Sarà necessario un file OpenAPI che descriva gli endpoint esposti dal server Python. Assicurati che l'URL del server sia l'URL pubblico del tuo servizio Render.
+- [x]  **Configurare un'azione personalizzata**: Aggiungere un'azione al Custom GPT che punta all'URL corretto del manifest OpenAPI: `https://sdk-electronics.onrender.com/openapi.json`. **(CRITICO: L'URL `https://sdk-electronics.onrender.com/sse` è ERRATO per il manifest OpenAPI, deve essere cambiato. Richiesto feedback su `MCP_ALLOWED_HOSTS` e `MCP_ALLOWED_ORIGINS` e accesso a `/openapi.json` nel browser.)**
 
 ### 4.3 Adattamento degli strumenti (Tools)
 
