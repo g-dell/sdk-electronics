@@ -28,8 +28,8 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
 
 - [x]  **Configurazione del servizio su Render**: Crea un nuovo "Web Service" su Render.
     - [ ]  **Root Directory**: Imposta la "Root Directory" alla radice del tuo repository (`.`).
-    - [x]  **Build Command**: `pnpm install --prefix . && pnpm run build && pip install -r pizzaz_server_python/requirements.txt` (Questo comando rimane invariato e gestisce sia le dipendenze frontend che quelle Python.)
-    - [ ]  **Start Command**: `uv run mcp-server-motherduck --transport sse --host 0.0.0.0 --port $PORT --db-path md:app_gpt_elettronica --motherduck-token $MOTHERDUCK_TOKEN` (Questo comando avvia il server specifico dell'SDK di OpenAI e gestirà il routing `/sse` e l'esposizione dell'API. Il file `pizzaz_server_python/main.py` è stato semplificato per allinearsi a questo approccio.)
+    - [x]  **Build Command**: `pnpm install --prefix . && pnpm run build && pip install -r pizzaz_server_python/requirements.txt && curl -LsSf https://setup.uv.sh | sh` (Questo comando gestisce le dipendenze frontend e Python, e installa il tool `uv` come binario.)
+    - [ ]  **Start Command**: `uv run -m mcp.server.motherduck --transport sse --host 0.0.0.0 --port $PORT --db-path md:app_gpt_elettronica --motherduck-token $MOTHERDUCK_TOKEN` (Questo comando avvia il server specifico dell'SDK di OpenAI e gestirà il routing `/sse` e l'esposizione dell'API. Il file `pizzaz_server_python/main.py` è stato semplificato per allinearsi a questo approccio.)
     - [x]  **Variabili d'ambiente**: Aggiungi `MOTHERDUCK_TOKEN` (con il tuo token), `MCP_ALLOWED_HOSTS` (deve includere `sdk-electronics.onrender.com`), `MCP_ALLOWED_ORIGINS` (deve includere `https://chat.openai.com` e `https://sdk-electronics.onrender.com`) e altre variabili necessarie.
 
 ### 4.2 Configurazione di ChatGPT
