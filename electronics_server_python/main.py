@@ -552,3 +552,79 @@ app = mcp.sse_app()
 # Il middleware aggiunge Content Security Policy headers per prevenire attacchi XSS
 app.add_middleware(CSPMiddleware)
 
+# Serve static files from assets directory
+# This allows direct access to built HTML, JS, and CSS files
+if ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR), html=False), name="assets")
+    logger.info(f"Static files available at /assets (serving from {ASSETS_DIR})")
+else:
+    logger.warning(f"Assets directory not found at {ASSETS_DIR}. Static files will not be served.")
+
+# Root route - provides information about available endpoints
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """Root endpoint that provides information about the server."""
+    widget_names = [w.identifier for w in widgets]
+    widgets_list = "\n".join([f"    <li><code>{name}</code> - {WIDGETS_BY_ID[name].title}</li>" for name in widget_names])
+    
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Electronics MCP Server</title>
+    <style>
+        body {{
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }}
+        h1 {{ color: #2563eb; }}
+        code {{
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: ui-monospace, monospace;
+        }}
+        ul {{ padding-left: 20px; }}
+        .endpoint {{ 
+            background: #f9fafb;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }}
+        .endpoint strong {{ color: #059669; }}
+    </style>
+</head>
+<body>
+    <h1>Electronics MCP Server</h1>
+    <p>Version: <code>{__version__}</code></p>
+    <p>MCP Protocol Version: 2024-11-05</p>
+    
+    <h2>Available Endpoints</h2>
+    <div class="endpoint">
+        <strong>GET /</strong> - This page (server information)
+    </div>
+    <div class="endpoint">
+        <strong>GET /mcp</strong> - SSE stream for MCP protocol
+    </div>
+    <div class="endpoint">
+        <strong>POST /mcp/messages?sessionId=...</strong> - Send follow-up messages for an active session
+    </div>
+    <div class="endpoint">
+        <strong>GET /assets/*</strong> - Static files (HTML, JS, CSS) from the assets directory
+    </div>
+    
+    <h2>Available Widgets ({len(widgets)})</h2>
+    <ul>
+{widgets_list}
+    </ul>
+    
+    <h2>Documentation</h2>
+    <p>See <code>electronics_server_python/README.md</code> for more information.</p>
+</body>
+</html>"""
+    return html_content
+
