@@ -41,9 +41,9 @@ from fastapi import Request, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from mcp.server.fastmcp import FastMCP
 from starlette.staticfiles import StaticFiles
-from starlette.routing import Mount
+from starlette.routing import Mount, Route
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import HTMLResponse as StarletteHTMLResponse, Response
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -552,17 +552,8 @@ app = mcp.sse_app()
 # Il middleware aggiunge Content Security Policy headers per prevenire attacchi XSS
 app.add_middleware(CSPMiddleware)
 
-# Serve static files from assets directory
-# This allows direct access to built HTML, JS, and CSS files
-if ASSETS_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR), html=False), name="assets")
-    logger.info(f"Static files available at /assets (serving from {ASSETS_DIR})")
-else:
-    logger.warning(f"Assets directory not found at {ASSETS_DIR}. Static files will not be served.")
-
-# Root route - provides information about available endpoints
-@app.get("/", response_class=HTMLResponse)
-async def root():
+# Root route handler - provides information about available endpoints
+async def root_handler(request):
     """Root endpoint that provides information about the server."""
     widget_names = [w.identifier for w in widgets]
     widgets_list = "\n".join([f"    <li><code>{name}</code> - {WIDGETS_BY_ID[name].title}</li>" for name in widget_names])
@@ -626,5 +617,22 @@ async def root():
     <p>See <code>electronics_server_python/README.md</code> for more information.</p>
 </body>
 </html>"""
-    return html_content
+    return StarletteHTMLResponse(content=html_content)
+
+# Health check endpoint - returns 200 OK for health checks (useful for Render, etc.)
+async def health_handler(request):
+    """Health check endpoint for monitoring and load balancers."""
+    return Response(content="OK", status_code=200, media_type="text/plain")
+
+# Serve static files from assets directory
+# This allows direct access to built HTML, JS, and CSS files
+if ASSETS_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR), html=False), name="assets")
+    logger.info(f"Static files available at /assets (serving from {ASSETS_DIR})")
+else:
+    logger.warning(f"Assets directory not found at {ASSETS_DIR}. Static files will not be served.")
+
+# Add routes using Starlette's add_route (since sse_app() returns a Starlette app, not FastAPI)
+app.add_route("/", root_handler, methods=["GET"])
+app.add_route("/health", health_handler, methods=["GET"])
 
