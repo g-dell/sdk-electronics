@@ -1363,3 +1363,6 @@ createRoot(document.getElementById("electronics-shop-root")!).render(
     <App />
   </BrowserRouter>
 );
+
+export { App };
+export default App;

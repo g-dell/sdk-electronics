@@ -395,3 +395,6 @@ if (!rootElement) {
 }
 
 createRoot(rootElement).render(<App />);
+
+export { App };
+export default App;

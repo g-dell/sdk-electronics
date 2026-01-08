@@ -47,18 +47,18 @@ function App() {
           <div className="min-w-0">
             <div className="text-base font-semibold">Electronics spotlights</div>
             <div className="text-sm text-black/60">
-              {toppingLabel
-                ? `Topping focus: ${toppingLabel}`
-                : "Trending slices near you"}
+              {searchLabel
+                ? `Search results for: ${searchLabel}`
+                : "Trending products near you"}
             </div>
           </div>
           <div className="ml-auto text-xs uppercase tracking-wide text-black/40">
             Updated 5m ago
           </div>
         </div>
-        {toppingLabel && (
+        {searchLabel && (
           <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#F46C21]/10 px-3 py-1 text-xs font-medium text-[#F46C21]">
-            We saved your {toppingLabel} preference
+            Showing results for: {searchLabel}
           </div>
         )}
       </div>
@@ -114,3 +114,6 @@ function App() {
 }
 
 createRoot(document.getElementById("mixed-auth-search-root")).render(<App />);
+
+export { App };
+export default App;

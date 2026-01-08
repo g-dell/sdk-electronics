@@ -8,4 +8,5 @@ if (root) {
   createRoot(root).render(<KitchenSinkLite />);
 }
 
+export { KitchenSinkLite as App };
 export default KitchenSinkLite;

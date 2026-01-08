@@ -215,7 +215,6 @@ async function main() {
               format: "es",
               entryFileNames: `${name}.js`,
               inlineDynamicImports: true,
-              sourcemap: true,
               assetFileNames: (info) =>
                 (info.name || "").endsWith(".css")
                   ? `${name}.css`

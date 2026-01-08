@@ -80,3 +80,6 @@ function App() {
 createRoot(document.getElementById("mixed-auth-past-orders-root")).render(
   <App />
 );
+
+export { App };
+export default App;
