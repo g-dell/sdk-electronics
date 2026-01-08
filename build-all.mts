@@ -7,7 +7,6 @@ import crypto from "crypto";
 import pkg from "./package.json" with { type: "json" };
 import tailwindcss from "@tailwindcss/vite";
 
-const entries = fg.sync("src/**/index.{tsx,jsx}");
 const outDir = "assets";
 
 const PER_ENTRY_CSS_GLOB = "**/*.{css,pcss,scss,sass}";
@@ -27,7 +26,6 @@ const targets: string[] = [
   "kitchen-sink-lite",
   "shopping-cart",
 ];
-const builtNames: string[] = [];
 
 function wrapEntryPlugin(
   virtualId: string,
@@ -61,123 +59,174 @@ function wrapEntryPlugin(
   };
 }
 
-fs.rmSync(outDir, { recursive: true, force: true });
+async function main() {
+  try {
+    console.log("Starting build process...");
+    console.log("Working directory:", process.cwd());
+    console.log("Node version:", process.version);
 
-for (const file of entries) {
-  const name = path.basename(path.dirname(file));
-  if (targets.length && !targets.includes(name)) {
-    continue;
-  }
+    // Verifica che la directory src esista
+    if (!fs.existsSync("src")) {
+      throw new Error("Directory 'src' not found. Current directory: " + process.cwd());
+    }
 
-  const entryAbs = path.resolve(file);
-  const entryDir = path.dirname(entryAbs);
+    const entries = fg.sync("src/**/index.{tsx,jsx}");
+    console.log(`Found ${entries.length} entry files`);
 
-  // Collect CSS for this entry using the glob(s) rooted at its directory
-  const perEntryCss = fg.sync(PER_ENTRY_CSS_GLOB, {
-    cwd: entryDir,
-    absolute: true,
-    dot: false,
-    ignore: PER_ENTRY_CSS_IGNORE,
-  });
+    if (entries.length === 0) {
+      throw new Error("No entry files found in src/**/index.{tsx,jsx}");
+    }
 
-  // Global CSS (Tailwind, etc.), only include those that exist
-  const globalCss = GLOBAL_CSS_LIST.filter((p) => fs.existsSync(p));
+    const builtNames: string[] = [];
 
-  // Final CSS list (global first for predictable cascade)
-  const cssToInclude = [...globalCss, ...perEntryCss].filter((p) =>
-    fs.existsSync(p)
-  );
+    // Rimuovi la directory di output se esiste
+    if (fs.existsSync(outDir)) {
+      console.log(`Removing existing ${outDir} directory...`);
+      fs.rmSync(outDir, { recursive: true, force: true });
+    }
 
-  const virtualId = `\0virtual-entry:${entryAbs}`;
+    for (const file of entries) {
+      const name = path.basename(path.dirname(file));
+      if (targets.length && !targets.includes(name)) {
+        console.log(`Skipping ${name} (not in targets list)`);
+        continue;
+      }
 
-  const createConfig = (): InlineConfig => ({
-    plugins: [
-      wrapEntryPlugin(virtualId, entryAbs, cssToInclude),
-      tailwindcss(),
-      react(),
-      {
-        name: "remove-manual-chunks",
-        outputOptions(options) {
-          if ("manualChunks" in options) {
-            delete (options as any).manualChunks;
-          }
-          return options;
+      console.log(`Processing entry: ${file}`);
+      const entryAbs = path.resolve(file);
+      const entryDir = path.dirname(entryAbs);
+
+      if (!fs.existsSync(entryAbs)) {
+        throw new Error(`Entry file not found: ${entryAbs}`);
+      }
+
+      // Collect CSS for this entry using the glob(s) rooted at its directory
+      const perEntryCss = fg.sync(PER_ENTRY_CSS_GLOB, {
+        cwd: entryDir,
+        absolute: true,
+        dot: false,
+        ignore: PER_ENTRY_CSS_IGNORE,
+      });
+
+      // Global CSS (Tailwind, etc.), only include those that exist
+      const globalCss = GLOBAL_CSS_LIST.filter((p) => fs.existsSync(p));
+
+      // Final CSS list (global first for predictable cascade)
+      const cssToInclude = [...globalCss, ...perEntryCss].filter((p) =>
+        fs.existsSync(p)
+      );
+
+      const virtualId = `\0virtual-entry:${entryAbs}`;
+
+      const createConfig = (): InlineConfig => ({
+        plugins: [
+          wrapEntryPlugin(virtualId, entryAbs, cssToInclude),
+          tailwindcss(),
+          react(),
+          {
+            name: "remove-manual-chunks",
+            outputOptions(options) {
+              if ("manualChunks" in options) {
+                delete (options as any).manualChunks;
+              }
+              return options;
+            },
+          },
+        ],
+        esbuild: {
+          jsx: "automatic",
+          jsxImportSource: "react",
+          target: "es2022",
         },
-      },
-    ],
-    esbuild: {
-      jsx: "automatic",
-      jsxImportSource: "react",
-      target: "es2022",
-    },
-    build: {
-      target: "es2022",
-      outDir,
-      emptyOutDir: false,
-      chunkSizeWarningLimit: 2000,
-      minify: "esbuild",
-      cssCodeSplit: false,
-      rollupOptions: {
-        input: virtualId,
-        output: {
-          format: "es",
-          entryFileNames: `${name}.js`,
-          inlineDynamicImports: true,
-          assetFileNames: (info) =>
-            (info.name || "").endsWith(".css")
-              ? `${name}.css`
-              : `[name]-[hash][extname]`,
+        build: {
+          target: "es2022",
+          outDir,
+          emptyOutDir: false,
+          chunkSizeWarningLimit: 2000,
+          minify: "esbuild",
+          cssCodeSplit: false,
+          rollupOptions: {
+            input: virtualId,
+            output: {
+              format: "es",
+              entryFileNames: `${name}.js`,
+              inlineDynamicImports: true,
+              assetFileNames: (info) =>
+                (info.name || "").endsWith(".css")
+                  ? `${name}.css`
+                  : `[name]-[hash][extname]`,
+            },
+            preserveEntrySignatures: "allow-extension",
+            treeshake: true,
+          },
         },
-        preserveEntrySignatures: "allow-extension",
-        treeshake: true,
-      },
-    },
-  });
+      });
 
-  console.group(`Building ${name} (react)`);
-  await build(createConfig());
-  console.groupEnd();
-  builtNames.push(name);
-  console.log(`Built ${name}`);
-}
+      console.group(`Building ${name} (react)`);
+      try {
+        await build(createConfig());
+        console.groupEnd();
+        builtNames.push(name);
+        console.log(`✓ Built ${name}`);
+      } catch (buildError) {
+        console.groupEnd();
+        console.error(`✗ Failed to build ${name}:`, buildError);
+        throw buildError;
+      }
+    }
 
-const outputs = fs
-  .readdirSync("assets")
-  .filter((f) => f.endsWith(".js") || f.endsWith(".css"))
-  .map((f) => path.join("assets", f))
-  .filter((p) => fs.existsSync(p));
+    if (builtNames.length === 0) {
+      throw new Error("No targets were built successfully");
+    }
 
-const h = crypto
-  .createHash("sha256")
-  .update(pkg.version, "utf8")
-  .digest("hex")
-  .slice(0, 4);
+    // Verifica che la directory assets esista e contenga file
+    if (!fs.existsSync("assets")) {
+      throw new Error("Assets directory was not created");
+    }
 
-console.group("Hashing outputs");
-for (const out of outputs) {
-  const dir = path.dirname(out);
-  const ext = path.extname(out);
-  const base = path.basename(out, ext);
-  const newName = path.join(dir, `${base}-${h}${ext}`);
+    const outputs = fs
+      .readdirSync("assets")
+      .filter((f) => f.endsWith(".js") || f.endsWith(".css"))
+      .map((f) => path.join("assets", f))
+      .filter((p) => fs.existsSync(p));
 
-  fs.renameSync(out, newName);
-  console.log(`${out} -> ${newName}`);
-}
-console.groupEnd();
+    if (outputs.length === 0) {
+      throw new Error("No output files were generated in assets directory");
+    }
 
-console.log("new hash: ", h);
+    console.log(`Generated ${outputs.length} output files`);
 
-const defaultBaseUrl = "http://localhost:4444";
-const baseUrlCandidate = process.env.BASE_URL?.trim() ?? "";
-const baseUrlRaw = baseUrlCandidate.length > 0 ? baseUrlCandidate : defaultBaseUrl;
-const normalizedBaseUrl = baseUrlRaw.replace(/\/+$/, "") || defaultBaseUrl;
-console.log(`Using BASE_URL ${normalizedBaseUrl} for generated HTML`);
+    const h = crypto
+      .createHash("sha256")
+      .update(pkg.version, "utf8")
+      .digest("hex")
+      .slice(0, 4);
 
-for (const name of builtNames) {
-  const dir = outDir;
-  const hashedHtmlPath = path.join(dir, `${name}-${h}.html`);
-  const liveHtmlPath = path.join(dir, `${name}.html`);
-  const html = `<!doctype html>
+    console.group("Hashing outputs");
+    for (const out of outputs) {
+      const dir = path.dirname(out);
+      const ext = path.extname(out);
+      const base = path.basename(out, ext);
+      const newName = path.join(dir, `${base}-${h}${ext}`);
+
+      fs.renameSync(out, newName);
+      console.log(`${out} -> ${newName}`);
+    }
+    console.groupEnd();
+
+    console.log("new hash: ", h);
+
+    const defaultBaseUrl = "http://localhost:4444";
+    const baseUrlCandidate = process.env.BASE_URL?.trim() ?? "";
+    const baseUrlRaw = baseUrlCandidate.length > 0 ? baseUrlCandidate : defaultBaseUrl;
+    const normalizedBaseUrl = baseUrlRaw.replace(/\/+$/, "") || defaultBaseUrl;
+    console.log(`Using BASE_URL ${normalizedBaseUrl} for generated HTML`);
+
+    for (const name of builtNames) {
+      const dir = outDir;
+      const hashedHtmlPath = path.join(dir, `${name}-${h}.html`);
+      const liveHtmlPath = path.join(dir, `${name}.html`);
+      const html = `<!doctype html>
 <html>
 <head>
   <script type="module" src="${normalizedBaseUrl}/${name}-${h}.js"></script>
@@ -188,7 +237,21 @@ for (const name of builtNames) {
 </body>
 </html>
 `;
-  fs.writeFileSync(hashedHtmlPath, html, { encoding: "utf8" });
-  fs.writeFileSync(liveHtmlPath, html, { encoding: "utf8" });
-  console.log(`${liveHtmlPath}`);
+      fs.writeFileSync(hashedHtmlPath, html, { encoding: "utf8" });
+      fs.writeFileSync(liveHtmlPath, html, { encoding: "utf8" });
+      console.log(`Generated HTML: ${liveHtmlPath}`);
+    }
+
+    console.log("✓ Build completed successfully!");
+  } catch (error) {
+    console.error("✗ Build failed with error:");
+    console.error(error);
+    if (error instanceof Error) {
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+    }
+    process.exit(1);
+  }
 }
+
+main();
