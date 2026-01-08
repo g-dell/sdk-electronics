@@ -151,3 +151,6 @@ function App() {
 }
 
 createRoot(document.getElementById("electronics-albums-root")).render(<App />);
+
+export { App };
+export default App;
