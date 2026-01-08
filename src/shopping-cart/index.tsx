@@ -3,12 +3,7 @@ import { createRoot } from "react-dom/client";
 import { useOpenAiGlobal } from "../use-openai-global";
 import { useWidgetState } from "../use-widget-state";
 import { AvocadoIcon, BreadIcon, EggIcon, JarIcon, TomatoIcon } from "./icons";
-
-type CartItem = {
-  name: string;
-  quantity: number;
-  [key: string]: unknown;
-};
+import type { CartItem } from "../types";
 
 type CartWidgetState = {
   cartId?: string;

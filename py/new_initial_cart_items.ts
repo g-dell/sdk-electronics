@@ -1,3 +1,5 @@
+import type { CartItem } from "../src/types";
+
 export const INITIAL_CART_ITEMS: CartItem[] = [
 {
   id: "AVphzgbJLJeJML43fA0o",

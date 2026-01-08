@@ -22,7 +22,7 @@ function App() {
         <div className="min-w-0">
           <div className="text-base font-semibold">Past orders</div>
           <div className="text-sm text-black/60">
-            Synced from your Pizzaz account
+            Synced from your Electronics account
           </div>
         </div>
         <div className="ml-auto text-xs uppercase tracking-wide text-black/40">
@@ -45,7 +45,7 @@ function App() {
                   </div>
                 </div>
                 <div className="mt-1 text-sm text-black/70">
-                  {order.restaurantName || "Pizza shop"} · {order.location}
+                  {order.restaurantName || "Electronics shop"} · {order.location}
                 </div>
                 <div className="mt-1 text-sm text-black/60">{order.placedAt}</div>
                 <div className="mt-2 text-sm text-black/80">

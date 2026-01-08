@@ -21,41 +21,23 @@ import { useWidgetState } from "../use-widget-state";
 
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { Image } from "@openai/apps-sdk-ui/components/Image";
+import type { CartItem, NutritionFact } from "../types";
 
-type NutritionFact = {
-  label: string;
-  value: string;
-};
-
-type CartItem = {
-  id: string;
-  name: string;
-  price: number;
-  description: string;
-  shortDescription?: string;
-  detailSummary?: string;
-  nutritionFacts?: NutritionFact[];
-  highlights?: string[];
-  tags?: string[];
-  quantity: number;
-  image: string;
-};
-
-type PizzazCartWidgetState = {
+type ElectronicsCartWidgetState = {
   state?: "checkout" | null;
   cartItems?: CartItem[];
   selectedCartItemId?: string | null;
 };
 
-type PizzazCartWidgetProps = {
+type ElectronicsCartWidgetProps = {
   cartItems?: CartItem[];
-  widgetState?: Partial<PizzazCartWidgetState> | null;
+  widgetState?: Partial<ElectronicsCartWidgetState> | null;
 };
 
 const SERVICE_FEE = 3;
 const DELIVERY_FEE = 2.99;
 const TAX_FEE = 3.4;
-const CONTINUE_TO_PAYMENT_EVENT = "pizzaz-shop:continue-to-payment";
+const CONTINUE_TO_PAYMENT_EVENT = "electronics-shop:continue-to-payment";
 
 const FILTERS: Array<{
   id: "all" | "vegetarian" | "vegan" | "size" | "spicy";
@@ -80,7 +62,7 @@ const cloneCartItem = (item: CartItem): CartItem => ({
 const createDefaultCartItems = (): CartItem[] =>
   NEW_INITIAL_CART_ITEMS.map((item) => cloneCartItem(item));
 
-const createDefaultWidgetState = (): PizzazCartWidgetState => ({
+const createDefaultWidgetState = (): ElectronicsCartWidgetState => ({
   state: null,
   cartItems: createDefaultCartItems(),
   selectedCartItemId: null,
@@ -314,6 +296,7 @@ function CheckoutDetailsPanel({
             color="secondary"
             size="sm"
             className="flex-1"
+            aria-label="Select 5% tip"
           >
             5%
           </Button>
@@ -323,6 +306,7 @@ function CheckoutDetailsPanel({
             color="primary"
             size="sm"
             className="flex-1"
+            aria-label="Select 10% tip"
           >
             10%
           </Button>
@@ -332,6 +316,7 @@ function CheckoutDetailsPanel({
             color="secondary"
             size="sm"
             className="flex-1"
+            aria-label="Select 15% tip"
           >
             15%
           </Button>
@@ -341,6 +326,7 @@ function CheckoutDetailsPanel({
             color="secondary"
             size="sm"
             className="flex-1"
+            aria-label="Select custom tip amount"
           >
             Other
           </Button>
@@ -366,6 +352,7 @@ function CheckoutDetailsPanel({
           size="md"
           className="mx-auto w-full max-w-xs"
           block
+          aria-label="Continue to payment"
           onClick={onContinueToPayment}
         >
           Continue to payment
@@ -379,8 +366,8 @@ function App() {
   const maxHeight = useMaxHeight() ?? undefined;
   const displayMode = useDisplayMode();
   const isFullscreen = displayMode === "fullscreen";
-  const widgetProps = useWidgetProps<PizzazCartWidgetProps>(() => ({}));
-  const [widgetState, setWidgetState] = useWidgetState<PizzazCartWidgetState>(
+  const widgetProps = useWidgetProps<ElectronicsCartWidgetProps>(() => ({}));
+  const [widgetState, setWidgetState] = useWidgetState<ElectronicsCartWidgetState>(
     createDefaultWidgetState
   );
   const navigate = useNavigate();
@@ -543,7 +530,7 @@ function App() {
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
 
   const updateWidgetState = useCallback(
-    (partial: Partial<PizzazCartWidgetState>) => {
+    (partial: Partial<ElectronicsCartWidgetState>) => {
       setWidgetState((previous) => ({
         ...createDefaultWidgetState(),
         ...(previous ?? {}),
@@ -1040,6 +1027,7 @@ function App() {
                   openCartModal(event.currentTarget as HTMLElement)
                 }
                 aria-haspopup="dialog"
+                aria-label={`View cart, ${totalItems} item${totalItems !== 1 ? 's' : ''} in cart`}
                 variant="outline"
                 color="secondary"
                 size="sm"
@@ -1064,6 +1052,7 @@ function App() {
                   type="button"
                   onClick={() => handleFilterToggle(filter.id)}
                   aria-pressed={isActive}
+                  aria-label={`Filter by ${filter.label}`}
                   variant={isActive ? "solid" : "outline"}
                   color="primary"
                   size="sm"
@@ -1076,7 +1065,7 @@ function App() {
         </header>
       )}
 
-      <LayoutGroup id="pizzas-grid">
+      <LayoutGroup id="electronics-grid">
         <div
           ref={cartGridRef}
           className={clsx(
@@ -1114,16 +1103,28 @@ function App() {
                     damping: 26,
                     mass: 0.8,
                   }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${item.name}, ${item.price.toFixed(2)}, ${item.quantity} in cart. Click to view details`}
                   onClick={(event) =>
                     handleCartItemSelect(
                       item.id,
                       event.currentTarget as HTMLElement
                     )
                   }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleCartItemSelect(
+                        item.id,
+                        event.currentTarget as HTMLElement
+                      );
+                    }
+                  }}
                   onMouseEnter={() => setHoveredCartItemId(item.id)}
                   onMouseLeave={() => setHoveredCartItemId(null)}
                   className={clsx(
-                    "group mb-4 flex cursor-pointer flex-col overflow-hidden border border-transparent bg-white transition-colors",
+                    "group mb-4 flex cursor-pointer flex-col overflow-hidden border border-transparent bg-white transition-colors focus:outline-none focus:ring-2 focus:ring-[#0f766e] focus:ring-offset-2",
                     isHovered && "border-[#0f766e]"
                   )}
                 >
@@ -1183,11 +1184,18 @@ function App() {
                         </span>
                         <button
                           type="button"
-                          className="flex h-6 w-6 items-center justify-center rounded-full opacity-50 transition-colors hover:bg-slate-200 hover:opacity-100"
+                          className="flex h-6 w-6 items-center justify-center rounded-full opacity-50 transition-colors hover:bg-slate-200 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#0f766e] focus:ring-offset-1"
                           aria-label={`Increase quantity of ${item.name}`}
                           onClick={(event) => {
                             event.stopPropagation();
                             adjustQuantity(item.id, 1);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              adjustQuantity(item.id, 1);
+                            }
                           }}
                         >
                           <Plus
@@ -1264,8 +1272,10 @@ function App() {
         <button
           type="button"
           onClick={handleContinueToPayment}
-          className="mx-auto mb-4 w-full rounded-full bg-[#FF5100] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#ff6a26] disabled:cursor-not-allowed disabled:bg-black/20"
+          className="mx-auto mb-4 w-full rounded-full bg-[#FF5100] px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#ff6a26] focus:outline-none focus:ring-2 focus:ring-[#FF5100] focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-black/20 disabled:opacity-50"
           disabled={cartSummaryTotalItems === 0}
+          aria-label={cartSummaryTotalItems === 0 ? "Continue to checkout (cart is empty)" : `Continue to checkout with ${cartSummaryTotalItems} item${cartSummaryTotalItems !== 1 ? 's' : ''}`}
+          aria-disabled={cartSummaryTotalItems === 0}
         >
           Continue to checkout
         </button>
@@ -1330,7 +1340,14 @@ function App() {
             <button
               type="button"
               onClick={handleSeeAll}
-              className="rounded-full border border-black/10 px-4 py-2 text-sm font-medium text-black/70 transition-colors hover:border-black/40 hover:text-black"
+              className="rounded-full border border-black/10 px-4 py-2 text-sm font-medium text-black/70 transition-colors hover:border-black/40 hover:text-black focus:outline-none focus:ring-2 focus:ring-[#0f766e] focus:ring-offset-2"
+              aria-label="See all products in fullscreen mode"
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  handleSeeAll();
+                }
+              }}
             >
               See all items
             </button>
@@ -1341,7 +1358,7 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("pizzaz-shop-root")!).render(
+createRoot(document.getElementById("electronics-shop-root")!).render(
   <BrowserRouter>
     <App />
   </BrowserRouter>

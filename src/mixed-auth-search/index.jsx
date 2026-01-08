@@ -2,13 +2,15 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import useEmblaCarousel from "embla-carousel-react";
 import { ArrowLeft, ArrowRight, Flame } from "lucide-react";
-import markers from "../pizzaz/markers.json";
+import markers from "../electronics/markers.json";
 import { useWidgetProps } from "../use-widget-props";
 import SliceCard from "./SliceCard";
 
 function App() {
-  const { pizzaTopping = "" } = useWidgetProps({ pizzaTopping: "" });
-  const toppingLabel = String(pizzaTopping || "").trim();
+  // Note: This widget is for electronics search
+  // Uses electronics-specific props and markers
+  const { searchTerm = "" } = useWidgetProps({ searchTerm: "" });
+  const searchLabel = String(searchTerm || "").trim();
   const places = markers?.places || [];
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "start",
@@ -43,7 +45,7 @@ function App() {
             <Flame strokeWidth={1.5} className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <div className="text-base font-semibold">Pizzaz spotlights</div>
+            <div className="text-base font-semibold">Electronics spotlights</div>
             <div className="text-sm text-black/60">
               {toppingLabel
                 ? `Topping focus: ${toppingLabel}`

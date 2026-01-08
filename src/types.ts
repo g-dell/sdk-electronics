@@ -81,6 +81,26 @@ export type CallTool = (
   args: Record<string, unknown>
 ) => Promise<CallToolResponse>;
 
+/** CartItem type definition - shared across the application */
+export type NutritionFact = {
+  label: string;
+  value: string;
+};
+
+export type CartItem = {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  shortDescription?: string;
+  detailSummary?: string;
+  nutritionFacts?: NutritionFact[];
+  highlights?: string[];
+  tags?: string[];
+  quantity: number;
+  image: string;
+};
+
 /** Extra events */
 export const SET_GLOBALS_EVENT_TYPE = "openai:set_globals";
 export class SetGlobalsEvent extends CustomEvent<{

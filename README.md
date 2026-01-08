@@ -35,7 +35,7 @@ The MCP servers in this demo highlight how each tool can light up widgets by com
 - `assets/` – Generated HTML, JS, and CSS bundles after running the build step.
 - `shopping_cart_python/` – Python MCP server that demonstrates how `_meta["widgetSessionId"]` keeps `widgetState` in sync across turns for a shopping-cart widget.
 - `pizzaz_server_node/` – MCP server implemented with the official TypeScript SDK.
-- `pizzaz_server_python/` – Python MCP server that returns the Pizzaz widgets.
+- `electronics_server_python/` – Python MCP server that returns the Electronics widgets.
 - `solar-system_server_python/` – Python MCP server for the 3D solar system widget.
 - `kitchen_sink_server_node/` – Node MCP server for the kitchen-sink-lite widget.
 - `kitchen_sink_server_python/` – Python MCP server for the kitchen-sink-lite widget.
@@ -122,13 +122,13 @@ cd pizzaz_server_node
 pnpm start
 ```
 
-### Pizzaz Python server
+### Electronics Python server
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r pizzaz_server_python/requirements.txt
-uvicorn pizzaz_server_python.main:app --port 8000
+pip install -r electronics_server_python/requirements.txt
+uvicorn electronics_server_python.main:app --port 8000
 ```
 
 ### Authenticated Python server
@@ -216,7 +216,7 @@ You can then invoke tools by asking something related. For example, for the Pizz
 
 ## Next steps
 
-- Customize the widget data: edit the handlers in `pizzaz_server_node/src`, `pizzaz_server_python/main.py`, or the solar system server to fetch data from your systems.
+- Customize the widget data: edit the handlers in `electronics_server_python/main.py`, or the solar system server to fetch data from your systems.
 - Create your own components and add them to the gallery: drop new entries into `src/` and they will be picked up automatically by the build script.
 
 ### Deploy your MCP server
