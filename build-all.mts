@@ -95,20 +95,10 @@ function generateCssSourcemaps(): Plugin {
       return null;
     },
     // Also handle CSS chunks during bundle generation
-    generateBundle(options, bundle) {
-      for (const [fileName, chunk] of Object.entries(bundle)) {
-        if (chunk.type === "asset" && fileName.endsWith(".css")) {
-          // Ensure CSS assets have sourcemap info
-          if (!chunk.sourcemap) {
-            chunk.sourcemap = {
-              version: 3,
-              sources: [fileName],
-              mappings: "AAAA",
-              names: [],
-            };
-          }
-        }
-      }
+    generateBundle(_options, _bundle) {
+      // CSS sourcemaps are handled automatically by Vite's build configuration
+      // No need to manually set sourcemap on assets
+      // This hook is kept for potential future use but currently does nothing
     },
   };
 }
@@ -302,11 +292,12 @@ async function main() {
       const dir = outDir;
       const hashedHtmlPath = path.join(dir, `${name}-${h}.html`);
       const liveHtmlPath = path.join(dir, `${name}.html`);
+      // Always use /assets/ prefix in paths - the server will handle BASE_URL if needed
       const html = `<!doctype html>
 <html>
 <head>
-  <script type="module" src="${normalizedBaseUrl}/${name}-${h}.js"></script>
-  <link rel="stylesheet" href="${normalizedBaseUrl}/${name}-${h}.css">
+  <script type="module" src="${normalizedBaseUrl}/assets/${name}-${h}.js"></script>
+  <link rel="stylesheet" href="${normalizedBaseUrl}/assets/${name}-${h}.css">
 </head>
 <body>
   <div id="${name}-root"></div>

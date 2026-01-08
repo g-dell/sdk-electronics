@@ -417,11 +417,48 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
             )
         )
 
+    # Rewrite HTML to use correct paths for JS/CSS files
+    # The build generates HTML with paths like /electronics-carousel-2d2b.js
+    # We need to rewrite these to use /assets/ or the correct BASE_URL
+    html_content = widget.html
+    import re
+    
+    # Get the base URL from environment (should be set on Render)
+    base_url = os.getenv("BASE_URL", "").rstrip("/")
+    
+    if base_url:
+        # Replace any localhost references with the actual BASE_URL
+        html_content = re.sub(
+            r'(src|href)="http://localhost:\d+/([^"]+)"',
+            f'\\1="{base_url}/assets/\\2"',
+            html_content
+        )
+        # Replace absolute paths from root (like /electronics-carousel-2d2b.js) to BASE_URL/assets/
+        html_content = re.sub(
+            r'(src|href)="/([^/"]+\.(js|css))"',
+            f'\\1="{base_url}/assets/\\2"',
+            html_content
+        )
+    else:
+        # If no BASE_URL, use relative paths with /assets/ prefix
+        # This works for same-origin requests
+        html_content = re.sub(
+            r'(src|href)="http://localhost:\d+/([^"]+)"',
+            r'\1="/assets/\2"',
+            html_content
+        )
+        # Convert absolute root paths (like /electronics-carousel-2d2b.js) to /assets/ paths
+        html_content = re.sub(
+            r'(src|href)="/([^/"]+\.(js|css))"',
+            r'\1="/assets/\2"',
+            html_content
+        )
+
     contents = [
         types.TextResourceContents(
             uri=widget.template_uri,
             mimeType=MIME_TYPE,
-            text=widget.html,
+            text=html_content,
             _meta=_tool_meta(widget),
         )
     ]
@@ -625,10 +662,10 @@ async def health_handler(request):
     return Response(content="OK", status_code=200, media_type="text/plain")
 
 # Serve static files from assets directory
-# This allows direct access to built HTML, JS, and CSS files
 if ASSETS_DIR.exists():
+    # Serve from /assets/ for explicit asset access
     app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR), html=False), name="assets")
-    logger.info(f"Static files available at /assets (serving from {ASSETS_DIR})")
+    logger.info(f"Static files available at /assets/ (serving from {ASSETS_DIR})")
 else:
     logger.warning(f"Assets directory not found at {ASSETS_DIR}. Static files will not be served.")
 
