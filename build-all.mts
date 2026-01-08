@@ -292,11 +292,12 @@ async function main() {
       const dir = outDir;
       const hashedHtmlPath = path.join(dir, `${name}-${h}.html`);
       const liveHtmlPath = path.join(dir, `${name}.html`);
+      // Always use /assets/ prefix in paths - the server will handle BASE_URL if needed
       const html = `<!doctype html>
 <html>
 <head>
-  <script type="module" src="${normalizedBaseUrl}/${name}-${h}.js"></script>
-  <link rel="stylesheet" href="${normalizedBaseUrl}/${name}-${h}.css">
+  <script type="module" src="${normalizedBaseUrl}/assets/${name}-${h}.js"></script>
+  <link rel="stylesheet" href="${normalizedBaseUrl}/assets/${name}-${h}.css">
 </head>
 <body>
   <div id="${name}-root"></div>
