@@ -242,22 +242,19 @@ class CSPMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         
-        # Costruisci la policy CSP
-        # Permetti solo risorse dallo stesso origin e da domini sicuri
-        csp_policy = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "  # unsafe-inline/unsafe-eval necessari per widget React
-            "style-src 'self' 'unsafe-inline'; "  # unsafe-inline necessario per Tailwind CSS
-            "img-src 'self' data: https:; "  # Permetti immagini da self, data URIs, e HTTPS
-            "font-src 'self' data:; "  # Permetti font da self e data URIs
-            "connect-src 'self' https://chat.openai.com; "  # Permetti connessioni a ChatGPT
-            "frame-ancestors 'none'; "  # Previeni clickjacking
-            "base-uri 'self'; "  # Limita base URI
-            "form-action 'self'; "  # Limita form submissions
-        )
+        # Costruisci la policy CSP come stringa singola per evitare problemi con h11
+        # h11 (usato da uvicorn) è molto rigoroso nella validazione degli header HTTP
+        csp_policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://chat.openai.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         
         # Aggiungi header CSP alla risposta
-        response.headers["Content-Security-Policy"] = csp_policy
+        # Nota: se h11 continua a rifiutare l'header, potrebbe essere necessario
+        # rimuovere temporaneamente il middleware CSP o usare un approccio alternativo
+        try:
+            response.headers["Content-Security-Policy"] = csp_policy
+        except Exception as e:
+            # Se h11 rifiuta l'header, loggiamo l'errore ma non blocchiamo la risposta
+            # Questo permette al server di funzionare anche senza CSP
+            logger.warning(f"Failed to set CSP header: {e}")
         
         # Aggiungi anche header X-Content-Type-Options per sicurezza aggiuntiva
         response.headers["X-Content-Type-Options"] = "nosniff"

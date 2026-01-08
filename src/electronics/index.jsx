@@ -35,7 +35,7 @@ function fitMapToMarkers(map, coords) {
   map.fitBounds(bounds, { padding: 60, animate: true });
 }
 
-export default function App() {
+function App() {
   const mapRef = useRef(null);
   const mapObj = useRef(null);
   const markerObjs = useRef([]);
@@ -277,6 +277,10 @@ export default function App() {
     </>
   );
 }
+
+// Export both as default and named export for compatibility with build system
+export default App;
+export { App };
 
 function RouterRoot() {
   return (

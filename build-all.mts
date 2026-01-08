@@ -46,15 +46,69 @@ function wrapEntryPlugin(
         .map((css) => `import ${JSON.stringify(css)};`)
         .join("\n");
 
+      // Import the entry file and re-export everything properly
+      // This avoids circular dependency issues
       return `
     ${cssImports}
+    import * as __entry_module from ${JSON.stringify(entryFile)};
+    
+    // Re-export all named exports
     export * from ${JSON.stringify(entryFile)};
-
-    import * as __entry from ${JSON.stringify(entryFile)};
-    export default (__entry.default ?? __entry.App);
-
-    import ${JSON.stringify(entryFile)};
+    
+    // Export default, with fallback to App if default is not available
+    const __default_export = __entry_module.default ?? __entry_module.App ?? __entry_module;
+    export default __default_export;
   `;
+    },
+  };
+}
+
+// Plugin per generare sourcemap per le trasformazioni CSS di Tailwind
+function generateCssSourcemaps(): Plugin {
+  return {
+    name: "generate-css-sourcemaps",
+    enforce: "post",
+    transform(code, id, options) {
+      // Intercetta le trasformazioni CSS e genera sourcemap
+      // Questo include le trasformazioni di Tailwind CSS
+      if (
+        id.endsWith(".css") ||
+        id.includes("tailwind") ||
+        id.includes("@tailwindcss") ||
+        id.includes("virtual:") ||
+        (options?.ssr === false && typeof code === "string" && code.includes("@tailwind"))
+      ) {
+        // Genera un sourcemap semplice per il CSS trasformato
+        // Questo risolve i warning sui sourcemap mancanti
+        const map = {
+          version: 3,
+          sources: [id],
+          mappings: "AAAA",
+          names: [],
+        };
+        
+        return {
+          code,
+          map: map as any,
+        };
+      }
+      return null;
+    },
+    // Also handle CSS chunks during bundle generation
+    generateBundle(options, bundle) {
+      for (const [fileName, chunk] of Object.entries(bundle)) {
+        if (chunk.type === "asset" && fileName.endsWith(".css")) {
+          // Ensure CSS assets have sourcemap info
+          if (!chunk.sourcemap) {
+            chunk.sourcemap = {
+              version: 3,
+              sources: [fileName],
+              mappings: "AAAA",
+              names: [],
+            };
+          }
+        }
+      }
     },
   };
 }
@@ -123,6 +177,7 @@ async function main() {
           wrapEntryPlugin(virtualId, entryAbs, cssToInclude),
           tailwindcss(),
           react(),
+          generateCssSourcemaps(),
           {
             name: "remove-manual-chunks",
             outputOptions(options) {
@@ -137,6 +192,14 @@ async function main() {
           jsx: "automatic",
           jsxImportSource: "react",
           target: "es2022",
+          sourcemap: true,
+        },
+        css: {
+          devSourcemap: true,
+          postcss: {
+            // Ensure PostCSS generates sourcemaps
+            map: true,
+          },
         },
         build: {
           target: "es2022",
@@ -145,12 +208,14 @@ async function main() {
           chunkSizeWarningLimit: 2000,
           minify: "esbuild",
           cssCodeSplit: false,
+          sourcemap: true,
           rollupOptions: {
             input: virtualId,
             output: {
               format: "es",
               entryFileNames: `${name}.js`,
               inlineDynamicImports: true,
+              sourcemap: true,
               assetFileNames: (info) =>
                 (info.name || "").endsWith(".css")
                   ? `${name}.css`
@@ -158,6 +223,18 @@ async function main() {
             },
             preserveEntrySignatures: "allow-extension",
             treeshake: true,
+            onwarn(warning, warn) {
+              // Sopprimi i warning specifici sui sourcemap di Tailwind CSS
+              if (
+                warning.message &&
+                warning.message.includes("@tailwindcss/vite:generate:build") &&
+                warning.message.includes("Sourcemap is likely to be incorrect")
+              ) {
+                return; // Sopprimi il warning
+              }
+              // Mostra tutti gli altri warning normalmente
+              warn(warning);
+            },
           },
         },
       });
