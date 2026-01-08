@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import markers from "../pizzaz/markers.json";
+import markers from "../electronics/markers.json";
 import { PlusCircle, Star } from "lucide-react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { Image } from "@openai/apps-sdk-ui/components/Image";
@@ -16,15 +16,15 @@ function App() {
             className="sm:w-18 w-16 aspect-square rounded-xl bg-cover bg-center"
             style={{
               backgroundImage:
-                "url(https://persistent.oaistatic.com/pizzaz/title.png)",
+                "url(https://persistent.oaistatic.com/electronics/title.png)",
             }}
           ></div>
           <div>
             <div className="text-base sm:text-xl font-medium">
-              National Best Pizza List
+              Top Electronics Products
             </div>
             <div className="text-sm text-black/60">
-              A ranking of the best pizzerias in the world
+              A ranking of the best electronics products
             </div>
           </div>
           <div className="flex-auto hidden sm:flex justify-end pr-2">
@@ -98,7 +98,7 @@ function App() {
           ))}
           {places.length === 0 && (
             <div className="py-6 text-center text-black/60">
-              No pizzerias found.
+              No products found.
             </div>
           )}
         </div>
@@ -112,4 +112,4 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("pizzaz-list-root")).render(<App />);
+createRoot(document.getElementById("electronics-list-root")).render(<App />);

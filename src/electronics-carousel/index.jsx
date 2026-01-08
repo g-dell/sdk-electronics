@@ -3,7 +3,7 @@ import "../index.css";
 import { createRoot } from "react-dom/client";
 import useEmblaCarousel from "embla-carousel-react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import markers from "../pizzaz/markers.json";
+import markers from "../electronics/markers.json";
 import PlaceCard from "./PlaceCard";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 
@@ -118,4 +118,4 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("pizzaz-carousel-root")).render(<App />);
+createRoot(document.getElementById("electronics-carousel-root")).render(<App />);

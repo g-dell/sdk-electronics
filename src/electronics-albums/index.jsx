@@ -150,4 +150,4 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("pizzaz-albums-root")).render(<App />);
+createRoot(document.getElementById("electronics-albums-root")).render(<App />);
