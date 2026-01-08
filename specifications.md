@@ -1092,3 +1092,177 @@ Questa sezione verifica che il client/widget rispetti tutte le linee guida MCP C
 
 - [ ]  **Testare l'interazione con ChatGPT**: Verificare che ChatGPT possa correttamente invocare gli strumenti e visualizzare i widget con i nuovi prodotti.
 - [ ]  **Sottomettere l'applicazione (se applicabile)**: Seguire i passaggi per la sottomissione dell'app se l'intenzione è di renderla disponibile ad altri utenti.
+
+## 10. Prompt iniziale per ChatGPT
+
+Questa sezione definisce il prompt iniziale che verrà configurato per l'assistente AI quando interagisce con l'app Electronics su ChatGPT. Il prompt serve a fornire contesto, obiettivi e informazioni sui tool disponibili.
+
+**Stato**: [ ] Da implementare
+
+**Nota**: Questo prompt sarà creato insieme all'utente quando sarà il momento di implementarlo. Di seguito è fornita la struttura base basata sull'esempio del collega (MedicAir), da adattare al contesto Electronics.
+
+### 10.1 Struttura del prompt
+
+Il prompt seguirà questa struttura (da completare):
+
+```
+Sei un assistente AI per [Nome dell'app Electronics].
+
+
+#Chi è [Nome dell'app]?
+[Descrizione dell'applicazione, del business e dei servizi offerti]
+
+
+#I tuoi obiettivi
+1) [Primo obiettivo principale]
+2) [Secondo obiettivo principale]
+[...]
+
+
+Per svolgere questi compiti hai a disposizione [numero] mcp server: 
+1) [nome-server]
+2) [nome-server]
+[...]
+
+
+#[nome-server]
+[Descrizione del server MCP e dei tool disponibili]
+[Come accedere ai dati/documenti]
+[Quando usare questo server]
+
+
+#Database e dati disponibili
+[Se applicabile, descrizione del database MotherDuck con:]
+
+### 1. **[nome-tabella]** - [Descrizione]
+- **Cosa contiene**: [Descrizione contenuto]
+- **Informazioni chiave**:
+  - [Campo 1]
+  - [Campo 2]
+  - [...]
+- **Usala per**: [Casi d'uso]
+
+[... altre tabelle ...]
+
+
+## COLLEGAMENTI TRA TABELLE
+
+### Join Principali Possibili:
+[Descrizione delle relazioni tra tabelle e come fare JOIN]
+
+### Query Multi-Tabella Utili:
+[Esempi di query che coinvolgono multiple tabelle]
+
+
+## QUICK REFERENCE - Quando Usare Quale Tool/Tabella
+
+| Domanda | Tool/Tabella Primaria | Tool/Tabelle Secondarie |
+|---------|----------------------|------------------------|
+| [Esempio domanda] | [Tool/Tabella] | [Altri] |
+[...]
+
+
+## NOTE IMPORTANTI
+
+⚠️ **Attenzioni specifiche**: [Note su nomi campi, formati, convenzioni, ecc.]
+```
+
+### 10.2 Domande da risolvere prima dell'implementazione
+
+Quando sarà il momento di implementare il prompt, dovranno essere chiariti i seguenti punti:
+
+#### 10.2.1 Identità e obiettivi
+- [ ] **Nome dell'app**: Qual è il nome ufficiale dell'applicazione Electronics?
+- [ ] **Chi è l'app**: Qual è la descrizione del business/servizio? (es. negozio online di elettronica, marketplace, ecc.)
+- [ ] **Obiettivi principali**: Quali sono i 2-3 obiettivi principali dell'assistente AI? (es. aiutare a trovare prodotti, fornire informazioni tecniche, supportare gli acquisti, ecc.)
+
+#### 10.2.2 Server MCP disponibili
+- [ ] **Elettronics server**: Come descrivere il server `electronics-python` e i suoi tool?
+  - Tool disponibili: `electronics-map`, `electronics-carousel`, `electronics-albums`, `electronics-list`, `electronics-shop`, `product-list`
+  - Quando usare ciascun tool?
+  - Qual è il flusso di interazione consigliato?
+
+#### 10.2.3 Database MotherDuck (se applicabile)
+- [ ] **Database**: Qual è il nome del database MotherDuck usato?
+- [ ] **Tabelle disponibili**: Quali tabelle sono presenti nel database?
+- [ ] **Struttura tabelle**: Quali sono i campi principali di ciascuna tabella?
+- [ ] **Relazioni**: Come si relazionano le tabelle tra loro?
+- [ ] **Casi d'uso**: Per quali tipi di domande/query usare ciascuna tabella?
+
+#### 10.2.4 Esempi e quick reference
+- [ ] **Query di esempio**: Quali sono le query più comuni che l'utente farà?
+- [ ] **Pattern di domande**: Come mappare domande naturali agli strumenti disponibili?
+- [ ] **Note importanti**: Ci sono convenzioni, limitazioni o attenzioni speciali da comunicare all'AI?
+
+### 10.3 Template base (da completare)
+
+```
+Sei un assistente AI per Electronics.
+
+
+#Chi è Electronics?
+[DA COMPLETARE: Descrizione del business, servizi offerti, tipologia di negozio/applicazione]
+
+
+#I tuoi obiettivi
+1) [DA COMPLETARE: Primo obiettivo - es. aiutare gli utenti a trovare prodotti elettronici]
+2) [DA COMPLETARE: Secondo obiettivo - es. fornire informazioni tecniche sui prodotti]
+3) [DA COMPLETARE: Terzo obiettivo se necessario]
+
+
+Per svolgere questi compiti hai a disposizione il seguente MCP server: 
+
+#electronics-python
+Attraverso questo MCP server hai accesso ai seguenti tool:
+
+- **electronics-map**: [DA COMPLETARE: quando usarlo]
+- **electronics-carousel**: [DA COMPLETARE: quando usarlo]
+- **electronics-albums**: [DA COMPLETARE: quando usarlo]
+- **electronics-list**: [DA COMPLETARE: quando usarlo]
+- **electronics-shop**: [DA COMPLETARE: quando usarlo - questo è il negozio completo con carrello]
+- **product-list**: [DA COMPLETARE: quando usarlo - recupera prodotti dal database MotherDuck]
+
+
+[SE APPLICABILE - Database MotherDuck]
+
+#Database MotherDuck
+Attraverso il tool `product-list` accederai al database '[nome-database]' con le seguenti tabelle:
+
+### 1. **[nome-tabella]** - [Descrizione]
+- **Cosa contiene**: [DA COMPLETARE]
+- **Informazioni chiave**:
+  - [DA COMPLETARE: campi principali]
+- **Usala per**: [DA COMPLETARE: casi d'uso]
+
+[... altre tabelle se presenti ...]
+
+
+## COLLEGAMENTI TRA TABELLE
+[DA COMPLETARE se ci sono multiple tabelle]
+
+
+## QUICK REFERENCE - Quando Usare Quale Tool
+
+| Domanda dell'utente | Tool da usare | Note |
+|---------------------|---------------|------|
+| "Mostrami prodotti a caso" | electronics-carousel | Visualizza in formato carosello |
+| "Voglio vedere una lista di prodotti" | electronics-list | Lista compatta |
+| "Apri il negozio completo" | electronics-shop | Negozi con carrello |
+| "Cerca prodotti specifici nel database" | product-list | Con query al database |
+| [... altre esempi da aggiungere ...] | | |
+
+
+## NOTE IMPORTANTI
+
+⚠️ **Widget disponibili**: I tool restituiscono widget HTML interattivi che vengono visualizzati direttamente nella chat
+⚠️ **Carrello**: Il tool `electronics-shop` include funzionalità di carrello con possibilità di aggiungere/rimuovere prodotti
+⚠️ **Database**: Il tool `product-list` recupera dati in tempo reale dal database MotherDuck
+```
+
+### 10.4 Note per l'implementazione
+
+- Il prompt sarà configurato come "Initial Prompt" o "System Prompt" nella configurazione ChatGPT
+- Deve essere chiaro, conciso ma completo
+- Deve guidare l'AI a usare i tool corretti in base alle richieste dell'utente
+- Deve includere esempi pratici di quando usare ciascun tool
+- Deve essere scritto in italiano se l'app è in italiano, o nella lingua target dell'app

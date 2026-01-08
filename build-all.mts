@@ -95,20 +95,10 @@ function generateCssSourcemaps(): Plugin {
       return null;
     },
     // Also handle CSS chunks during bundle generation
-    generateBundle(options, bundle) {
-      for (const [fileName, chunk] of Object.entries(bundle)) {
-        if (chunk.type === "asset" && fileName.endsWith(".css")) {
-          // Ensure CSS assets have sourcemap info
-          if (!chunk.sourcemap) {
-            chunk.sourcemap = {
-              version: 3,
-              sources: [fileName],
-              mappings: "AAAA",
-              names: [],
-            };
-          }
-        }
-      }
+    generateBundle(_options, _bundle) {
+      // CSS sourcemaps are handled automatically by Vite's build configuration
+      // No need to manually set sourcemap on assets
+      // This hook is kept for potential future use but currently does nothing
     },
   };
 }

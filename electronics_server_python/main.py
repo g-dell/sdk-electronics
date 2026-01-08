@@ -433,10 +433,9 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
             f'\\1="{base_url}/assets/\\2"',
             html_content
         )
-        # Also replace paths that start with / (absolute paths from root)
-        # Convert them to use /assets/ prefix
+        # Replace absolute paths from root (like /electronics-carousel-2d2b.js) to BASE_URL/assets/
         html_content = re.sub(
-            r'(src|href)="/([^/"]+-[a-f0-9]{4}\.(js|css))"',
+            r'(src|href)="/([^/"]+\.(js|css))"',
             f'\\1="{base_url}/assets/\\2"',
             html_content
         )
@@ -448,9 +447,9 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
             r'\1="/assets/\2"',
             html_content
         )
-        # Convert absolute root paths to /assets/ paths
+        # Convert absolute root paths (like /electronics-carousel-2d2b.js) to /assets/ paths
         html_content = re.sub(
-            r'(src|href)="/([^/"]+-[a-f0-9]{4}\.(js|css))"',
+            r'(src|href)="/([^/"]+\.(js|css))"',
             r'\1="/assets/\2"',
             html_content
         )
