@@ -223,7 +223,7 @@ def _tool_invocation_meta(widget: PizzazWidget) -> Dict[str, Any]:
     }
 
 
-@mcp.get("/openapi.json", response_class=JSONResponse)
+@app.get("/openapi.json", response_class=JSONResponse)
 async def get_openapi_json():
     return mcp._mcp_server.get_openapi_schema()
 
