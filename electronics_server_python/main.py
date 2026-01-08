@@ -417,28 +417,41 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
             )
         )
 
-    # Rewrite HTML to use relative or absolute paths based on the request
-    # This allows the widget to work in any environment (local, Render, etc.)
+    # Rewrite HTML to use correct paths for JS/CSS files
+    # The build generates HTML with paths like /electronics-carousel-2d2b.js
+    # We need to rewrite these to use /assets/ or the correct BASE_URL
     html_content = widget.html
+    import re
     
-    # If HTML contains absolute URLs with localhost or BASE_URL, we can rewrite them
-    # But for now, we rely on the middleware to serve files from root path
-    # The HTML should already have the correct paths from build time
-    
-    # However, if BASE_URL wasn't set correctly during build, we can try to fix it here
-    # Get the base URL from environment or use a relative path fallback
+    # Get the base URL from environment (should be set on Render)
     base_url = os.getenv("BASE_URL", "").rstrip("/")
+    
     if base_url:
         # Replace any localhost references with the actual BASE_URL
-        import re
         html_content = re.sub(
-            r'src="http://localhost:\d+/',
-            f'src="{base_url}/',
+            r'(src|href)="http://localhost:\d+/([^"]+)"',
+            f'\\1="{base_url}/assets/\\2"',
             html_content
         )
+        # Also replace paths that start with / (absolute paths from root)
+        # Convert them to use /assets/ prefix
         html_content = re.sub(
-            r'href="http://localhost:\d+/',
-            f'href="{base_url}/',
+            r'(src|href)="/([^/"]+-[a-f0-9]{4}\.(js|css))"',
+            f'\\1="{base_url}/assets/\\2"',
+            html_content
+        )
+    else:
+        # If no BASE_URL, use relative paths with /assets/ prefix
+        # This works for same-origin requests
+        html_content = re.sub(
+            r'(src|href)="http://localhost:\d+/([^"]+)"',
+            r'\1="/assets/\2"',
+            html_content
+        )
+        # Convert absolute root paths to /assets/ paths
+        html_content = re.sub(
+            r'(src|href)="/([^/"]+-[a-f0-9]{4}\.(js|css))"',
+            r'\1="/assets/\2"',
             html_content
         )
 
@@ -649,34 +662,11 @@ async def health_handler(request):
     """Health check endpoint for monitoring and load balancers."""
     return Response(content="OK", status_code=200, media_type="text/plain")
 
-# Middleware to serve static files from root path (JS, CSS, HTML)
-# This is needed because build-all.mts generates HTML with paths like /electronics-carousel-2d2b.js
-class StaticFileMiddleware(BaseHTTPMiddleware):
-    """Middleware to serve static files (JS, CSS, HTML) from root path."""
-    
-    async def dispatch(self, request: Request, call_next):
-        # Skip if already handled by other routes (like /mcp, /health, /assets)
-        path = request.url.path
-        if path in ["/", "/health"] or path.startswith("/mcp") or path.startswith("/assets"):
-            return await call_next(request)
-        
-        # Only handle requests for JS, CSS, or HTML files
-        if path.endswith((".js", ".css", ".html")) and ASSETS_DIR.exists():
-            from starlette.responses import FileResponse
-            file_path = path.lstrip("/")
-            full_path = ASSETS_DIR / file_path
-            if full_path.exists() and full_path.is_file():
-                return FileResponse(str(full_path))
-        
-        return await call_next(request)
-
 # Serve static files from assets directory
 if ASSETS_DIR.exists():
     # Serve from /assets/ for explicit asset access
     app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR), html=False), name="assets")
-    # Add middleware to serve static files from root (must be added after CSP middleware)
-    app.add_middleware(StaticFileMiddleware)
-    logger.info(f"Static files available at /assets/ and root (serving from {ASSETS_DIR})")
+    logger.info(f"Static files available at /assets/ (serving from {ASSETS_DIR})")
 else:
     logger.warning(f"Assets directory not found at {ASSETS_DIR}. Static files will not be served.")
 
