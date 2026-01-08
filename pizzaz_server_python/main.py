@@ -185,9 +185,6 @@ mcp = FastMCP(
     transport_security=_transport_security_settings(),
 )
 
-app = mcp.streamable_http_app()
-
-app.mount("/assets", StaticFiles(directory=ASSETS_DIR, html=True), name="assets")
 
 TOOL_INPUT_SCHEMA: Dict[str, Any] = {
     "type": "object",
@@ -223,15 +220,6 @@ def _tool_invocation_meta(widget: PizzazWidget) -> Dict[str, Any]:
     }
 
 
-@app.get("/openapi.json", response_class=JSONResponse)
-async def get_openapi_json():
-    return mcp._mcp_server.get_openapi_schema()
-
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    with open(ASSETS_DIR / "index.html", "r") as f:
-        html_content = f.read()
-    return HTMLResponse(content=html_content)
 
 @mcp._mcp_server.list_tools()
 async def _list_tools() -> List[types.Tool]:
@@ -373,21 +361,3 @@ mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resou
 
 
 
-try:
-    from starlette.middleware.cors import CORSMiddleware
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-        allow_credentials=False,
-    )
-except Exception:
-    pass
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run("main:app", host="0.0.0.0", port=8000)

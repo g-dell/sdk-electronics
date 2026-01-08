@@ -28,14 +28,14 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
 
 - [x]  **Configurazione del servizio su Render**: Crea un nuovo "Web Service" su Render.
     - [ ]  **Root Directory**: Imposta la "Root Directory" alla radice del tuo repository (`.`).
-    - [x]  **Build Command**: `pnpm install --prefix . && pnpm run build && pip install -r pizzaz_server_python/requirements.txt` (Errore "ModuleNotFoundError: No module named 'duckdb'" risolto aggiungendo `duckdb` a `requirements.txt`.)
-    - [ ]  **Start Command**: `uvicorn pizzaz_server_python.main:app --host 0.0.0.0 --port $PORT` (Errore 404 risolto aggiungendo una rotta root a FastAPI per servire `index.html`. Errore `AttributeError: 'FastMCP' object has no attribute 'get'` risolto ripristinando `@app.get` per l'endpoint `/openapi.json`.)
+    - [x]  **Build Command**: `pnpm install --prefix . && pnpm run build && pip install -r pizzaz_server_python/requirements.txt` (Questo comando rimane invariato e gestisce sia le dipendenze frontend che quelle Python.)
+    - [ ]  **Start Command**: `uv run mcp-server-motherduck --transport sse --host 0.0.0.0 --port $PORT --db-path md:app_gpt_elettronica --motherduck-token $MOTHERDUCK_TOKEN` (Questo comando avvia il server specifico dell'SDK di OpenAI e gestirà il routing `/sse` e l'esposizione dell'API. Il file `pizzaz_server_python/main.py` è stato semplificato per allinearsi a questo approccio.)
     - [x]  **Variabili d'ambiente**: Aggiungi `MOTHERDUCK_TOKEN` (con il tuo token), `MCP_ALLOWED_HOSTS` (deve includere `sdk-electronics.onrender.com`), `MCP_ALLOWED_ORIGINS` (deve includere `https://chat.openai.com` e `https://sdk-electronics.onrender.com`) e altre variabili necessarie.
 
 ### 4.2 Configurazione di ChatGPT
 
 - [ ]  **Creare una Custom GPT**: Seguire le istruzioni nell'interfaccia di ChatGPT per creare una nuova Custom GPT.
-- [x]  **Configurare un'azione personalizzata**: Aggiungere un'azione al Custom GPT che punta all'URL corretto del manifest OpenAPI: `https://sdk-electronics.onrender.com/openapi.json`. **(CRITICO: L'URL `https://sdk-electronics.onrender.com/sse` è ERRATO per il manifest OpenAPI, deve essere cambiato. Richiesto feedback su `MCP_ALLOWED_HOSTS` e `MCP_ALLOWED_ORIGINS` e accesso a `/openapi.json` nel browser.)**
+- [x]  **Configurare un'azione personalizzata**: Aggiungere un'azione al Custom GPT che punta all'URL corretto del manifest OpenAPI: `https://sdk-electronics.onrender.com/sse/openapi.json`. (L'URL include `/sse` come richiesto dall'applicazione ChatGPT SDK.)
 
 ### 4.3 Adattamento degli strumenti (Tools)
 
