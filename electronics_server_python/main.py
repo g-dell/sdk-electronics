@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Electronics demo MCP server implemented with the Python FastMCP helper.
 
 The server exposes widget-backed tools that render the Electronics UI bundle.
@@ -11,8 +13,6 @@ MCP Protocol Version: 2024-11-05
 """
 
 __version__ = "1.0.0"
-
-from __future__ import annotations
 
 import os
 import logging
