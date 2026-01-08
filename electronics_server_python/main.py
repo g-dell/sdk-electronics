@@ -418,39 +418,46 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
         )
 
     # Rewrite HTML to use correct paths for JS/CSS files
-    # The build generates HTML with paths like /electronics-carousel-2d2b.js
-    # We need to rewrite these to use /assets/ or the correct BASE_URL
+    # Handles multiple cases:
+    # - http://localhost:4444/file.js -> /assets/file.js or BASE_URL/assets/file.js
+    # - http://localhost:4444/assets/file.js -> /assets/file.js or BASE_URL/assets/file.js
+    # - /file.js -> /assets/file.js or BASE_URL/assets/file.js
     html_content = widget.html
     import re
     
-    # Get the base URL from environment (should be set on Render)
     base_url = os.getenv("BASE_URL", "").rstrip("/")
     
+    def fix_asset_path(match):
+        attr, path = match.group(1), match.group(2)
+        # Remove leading slash if present, ensure assets/ prefix
+        path = path.lstrip('/')
+        if not path.startswith('assets/'):
+            path = f'assets/{path}'
+        
+        if base_url:
+            return f'{attr}="{base_url}/{path}"'
+        else:
+            return f'{attr}="/{path}"'
+    
+    # Pattern 1: localhost URLs (with or without assets/)
+    html_content = re.sub(
+        r'(src|href)="http://localhost:\d+/([^"]+\.(js|css))"',
+        fix_asset_path,
+        html_content
+    )
+    
+    # Pattern 2: Absolute root paths
+    html_content = re.sub(
+        r'(src|href)="/([^"]+\.(js|css))"',
+        fix_asset_path,
+        html_content
+    )
+    
+    # Pattern 3: BASE_URL paths (if set)
     if base_url:
-        # Replace any localhost references with the actual BASE_URL
         html_content = re.sub(
-            r'(src|href)="http://localhost:\d+/([^"]+)"',
-            f'\\1="{base_url}/assets/\\2"',
-            html_content
-        )
-        # Replace absolute paths from root (like /electronics-carousel-2d2b.js) to BASE_URL/assets/
-        html_content = re.sub(
-            r'(src|href)="/([^/"]+\.(js|css))"',
-            f'\\1="{base_url}/assets/\\2"',
-            html_content
-        )
-    else:
-        # If no BASE_URL, use relative paths with /assets/ prefix
-        # This works for same-origin requests
-        html_content = re.sub(
-            r'(src|href)="http://localhost:\d+/([^"]+)"',
-            r'\1="/assets/\2"',
-            html_content
-        )
-        # Convert absolute root paths (like /electronics-carousel-2d2b.js) to /assets/ paths
-        html_content = re.sub(
-            r'(src|href)="/([^/"]+\.(js|css))"',
-            r'\1="/assets/\2"',
+            rf'(src|href)="{re.escape(base_url)}/(?!assets/)([^"]+\.(js|css))"',
+            fix_asset_path,
             html_content
         )
 
