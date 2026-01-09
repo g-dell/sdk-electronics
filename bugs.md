@@ -65,6 +65,24 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
   - **Sezione correlata**: Tutti i componenti che usano immagini: `PlaceCard.jsx`, `Inspector.jsx`, `AlbumCard.jsx`, `FullscreenViewer.jsx`, `FilmStrip.jsx`, `Sidebar.jsx`
   - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
 
+### File .env non trovato dal server Python
+- [x] **Bug .env - File .env non caricato correttamente**: [2026-01-09] Il server Python non riusciva a trovare il file `.env` nella root del progetto quando veniva eseguito. Il problema era che `load_dotenv()` cercava il file nella directory corrente di lavoro invece che nella root del progetto, causando errori quando il server veniva eseguito da directory diverse.
+  - **Come si manifesta**: Il server Python non legge le variabili d'ambiente dal file `.env`, causando errori come "MOTHERDUCK_TOKEN non trovato" anche se il file `.env` esiste. Questo causa il fallimento della connessione a MotherDuck.
+  - **Sezione correlata**: `electronics_server_python/main.py` - caricamento variabili d'ambiente (riga 23)
+  - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
+
+### MOTHERDUCK_TOKEN non configurato nel file .env
+- [x] **Bug .env - MOTHERDUCK_TOKEN mancante**: [2026-01-09] Il file `.env` conteneva `MOTHERDUCK_KEY` ma il codice Python cercava `MOTHERDUCK_TOKEN`. Questo causava errori di configurazione quando il server tentava di connettersi a MotherDuck, anche se il file `.env` veniva caricato correttamente.
+  - **Come si manifesta**: Errori nei log del server: "MotherDuck configuration error: MOTHERDUCK_TOKEN non trovato nelle variabili d'ambiente". Il server restituisce 0 prodotti dal database anche se il token è presente ma con un nome diverso.
+  - **Sezione correlata**: `electronics_server_python/main.py` - funzione `get_motherduck_connection()` (riga 80), file `.env` nella root del progetto
+  - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
+
+### python-dotenv mancante nei requirements.txt
+- [x] **Bug Requirements - python-dotenv non dichiarato**: [2026-01-09] Il codice Python usa `from dotenv import load_dotenv` ma la dipendenza `python-dotenv` non era presente nel file `requirements.txt`. Questo causava potenziali problemi di installazione quando si installavano le dipendenze da zero.
+  - **Come si manifesta**: Se si installa il progetto da zero con `pip install -r requirements.txt`, l'import di `dotenv` fallisce con `ModuleNotFoundError: No module named 'dotenv'`. Il server non può avviarsi.
+  - **Sezione correlata**: `electronics_server_python/requirements.txt`, `electronics_server_python/main.py` (riga 21)
+  - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
+
 ## Bug risolti
 
 ### CORS Error - UI non si carica
@@ -168,6 +186,41 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
     - `PROXY_ALLOWED_DOMAINS`: Lista di domini permessi per il proxy (separati da virgola). Se non configurato, tutti i domini sono permessi.
     - `proxyBaseUrl`: Prop opzionale su `SafeImage` per specificare esplicitamente l'URL base del server (utile in contesti specifici)
   - **Verificato**: [2026-01-08] Il proxy endpoint è stato implementato e testato. `SafeImage` ora rileva automaticamente errori di caricamento e prova a usare il proxy. La soluzione è pronta per essere testata in produzione. Il problema ORB sarà risolto quando le immagini vengono caricate tramite il proxy, che aggiunge gli header CORS corretti.
+
+### File .env non trovato dal server Python
+- [x] **Bug .env - File .env non caricato correttamente**: [2026-01-09]
+  - **Bug trovato**: [2026-01-09] Il server Python non riusciva a trovare il file `.env` nella root del progetto quando veniva eseguito. Il problema era che `load_dotenv()` cercava il file nella directory corrente di lavoro invece che nella root del progetto. Quando il server veniva eseguito da `electronics_server_python/` invece che dalla root, il file `.env` non veniva trovato.
+  - **Bug risolto**: [2026-01-09] Modificato il codice per specificare esplicitamente il percorso del file `.env` nella root del progetto usando `Path(__file__).resolve().parent.parent / ".env"`. Questo garantisce che il file `.env` venga sempre trovato indipendentemente dalla directory di lavoro corrente.
+  - **Soluzione applicata**:
+    1. Modificato `electronics_server_python/main.py` (righe 21-26):
+       - Aggiunto `from pathlib import Path` per gestire percorsi
+       - Calcolato il percorso esplicito del file `.env`: `env_path = Path(__file__).resolve().parent.parent / ".env"`
+       - Modificato `load_dotenv()` per usare il percorso esplicito: `load_dotenv(dotenv_path=env_path)`
+    2. Il file `.env` deve essere posizionato nella root del progetto (`c:\Projects\sdk-electronics\.env`), non in `electronics_server_python/`
+  - **Verificato**: [2026-01-09] Il server Python ora trova correttamente il file `.env` nella root del progetto. Le variabili d'ambiente vengono caricate correttamente indipendentemente dalla directory di lavoro corrente.
+
+### MOTHERDUCK_TOKEN non configurato nel file .env
+- [x] **Bug .env - MOTHERDUCK_TOKEN mancante**: [2026-01-09]
+  - **Bug trovato**: [2026-01-09] Il file `.env` conteneva `MOTHERDUCK_KEY` ma il codice Python cercava `MOTHERDUCK_TOKEN`. Questo causava errori nei log: "MotherDuck configuration error: MOTHERDUCK_TOKEN non trovato nelle variabili d'ambiente. Configurare MOTHERDUCK_TOKEN per connettersi a MotherDuck." Il server restituiva 0 prodotti dal database anche se un token era presente nel file `.env`.
+  - **Bug risolto**: [2026-01-09] Aggiunto `MOTHERDUCK_TOKEN` al file `.env` con lo stesso valore di `MOTHERDUCK_KEY`. Il file `.env` ora contiene entrambe le variabili per compatibilità.
+  - **Soluzione applicata**:
+    1. Verificato il contenuto del file `.env` che conteneva:
+       - `MOTHERDUCK_KEY=...` (già presente)
+       - `MOTHERDUCK_DB_NAME=app_gpt_elettronica` (già presente)
+    2. Aggiunto `MOTHERDUCK_TOKEN=...` al file `.env` con lo stesso valore di `MOTHERDUCK_KEY`
+    3. Il file `.env` ora contiene tutte e tre le variabili necessarie
+  - **Nota**: Il codice Python cerca specificamente `MOTHERDUCK_TOKEN` (riga 80 in `main.py`), quindi questa variabile è obbligatoria nel file `.env`. `MOTHERDUCK_KEY` può rimanere per compatibilità con altri tool o script.
+  - **Verificato**: [2026-01-09] Il file `.env` ora contiene `MOTHERDUCK_TOKEN` e il server Python può leggere correttamente il token. Il server ora si connette correttamente a MotherDuck quando viene eseguito.
+
+### python-dotenv mancante nei requirements.txt
+- [x] **Bug Requirements - python-dotenv non dichiarato**: [2026-01-09]
+  - **Bug trovato**: [2026-01-09] Il codice Python usa `from dotenv import load_dotenv` (riga 21 in `main.py`) ma la dipendenza `python-dotenv` non era presente nel file `requirements.txt`. Questo causava potenziali problemi quando si installavano le dipendenze da zero: l'import falliva con `ModuleNotFoundError: No module named 'dotenv'`.
+  - **Bug risolto**: [2026-01-09] Aggiunto `python-dotenv>=1.0.0` al file `requirements.txt`. La dipendenza è necessaria per caricare le variabili d'ambiente dal file `.env`.
+  - **Soluzione applicata**:
+    1. Aggiunta riga `python-dotenv>=1.0.0  # Per caricare variabili d'ambiente da .env` a `electronics_server_python/requirements.txt`
+    2. Verificato che `python-dotenv` sia installato nel sistema (era già installato globalmente, ma ora è dichiarato nelle dipendenze del progetto)
+  - **Nota**: Anche se `python-dotenv` era già installato nel sistema, è importante dichiararlo in `requirements.txt` per garantire che venga installato quando si clona il progetto o si crea un nuovo ambiente virtuale.
+  - **Verificato**: [2026-01-09] La dipendenza `python-dotenv>=1.0.0` è ora presente in `requirements.txt`. Il progetto può essere installato da zero senza errori di import.
 
 ## Verifiche da fare
 

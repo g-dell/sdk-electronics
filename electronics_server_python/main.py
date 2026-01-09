@@ -24,7 +24,11 @@ from pathlib import Path
 # Carica il file .env dalla root del progetto (non dalla directory electronics_server_python)
 # __file__ è main.py in electronics_server_python/, quindi parent.parent è la root
 env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=env_path)
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    # Prova comunque a caricare (potrebbe essere in un'altra posizione o nelle variabili d'ambiente di sistema)
+    load_dotenv()
 
 # Configurazione logging per activity logs
 logging.basicConfig(
@@ -34,6 +38,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Log info sul caricamento del file .env (dopo che logger è stato configurato)
+if env_path.exists():
+    logger.debug(f"Loaded .env file from: {env_path}")
+else:
+    logger.warning(f".env file not found at: {env_path}. Environment variables will be read from system environment.")
+
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import lru_cache
@@ -41,6 +51,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import mcp.types as types
+import uvicorn
 from fastapi import Request, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from mcp.server.fastmcp import FastMCP
@@ -124,7 +135,11 @@ async def get_products_from_motherduck():
             return products
     except ValueError as e:
         # Errore di configurazione (es. MOTHERDUCK_TOKEN mancante)
-        logger.error(f"MotherDuck configuration error: {e}")
+        # Questo è un caso previsto: in sviluppo locale senza token, i widget usano il fallback JSON
+        logger.warning(
+            f"MotherDuck token not configured: {e}. "
+            "Widgets will use fallback data from JSON files."
+        )
         return []
     except Exception as e:
         # Altri errori (es. connessione, query, ecc.)
@@ -941,7 +956,13 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             logger.info(f"Tool {tool_name}: Fetching products from MotherDuck")
             products = await get_products_from_motherduck()
             product_count = len(products) if products else 0
-            logger.info(f"Tool {tool_name}: Retrieved {product_count} products from MotherDuck")
+            if product_count == 0:
+                logger.info(
+                    f"Tool {tool_name}: No products retrieved from MotherDuck. "
+                    "This may be due to missing MOTHERDUCK_TOKEN or database connection issues."
+                )
+            else:
+                logger.info(f"Tool {tool_name}: Retrieved {product_count} products from MotherDuck")
             
             result = types.ServerResult(
                 types.CallToolResult(
@@ -961,7 +982,13 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             products = await get_products_from_motherduck()
             albums = transform_products_to_albums(products)
             album_count = len(albums) if albums else 0
-            logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {album_count} albums")
+            if album_count == 0:
+                logger.info(
+                    f"Tool {tool_name}: No products retrieved from MotherDuck. "
+                    "Widget will use fallback data from albums.json"
+                )
+            else:
+                logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {album_count} albums")
             
             # Valida che non ci siano argomenti inattesi
             if arguments:
@@ -988,7 +1015,13 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             products = await get_products_from_motherduck()
             places = transform_products_to_places(products)
             place_count = len(places) if places else 0
-            logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {place_count} places")
+            if place_count == 0:
+                logger.info(
+                    f"Tool {tool_name}: No products retrieved from MotherDuck. "
+                    "Widget will use fallback data from markers.json"
+                )
+            else:
+                logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {place_count} places")
             
             # Valida che non ci siano argomenti inattesi
             if arguments:
@@ -1170,4 +1203,19 @@ app.add_route("/", root_handler, methods=["GET"])
 app.add_route("/health", health_handler, methods=["GET"])
 app.add_route("/proxy-image", proxy_image_handler, methods=["GET"])
 app.add_route("/proxy-image", proxy_image_options_handler, methods=["OPTIONS"])
+
+
+if __name__ == "__main__":
+    """
+    Permette di eseguire il server direttamente con: python main.py
+    Per produzione, usa invece: uvicorn electronics_server_python.main:app --host 0.0.0.0 --port $PORT
+    """
+    port = int(os.getenv("PORT", "8000"))
+    host = os.getenv("HOST", "127.0.0.1")
+    
+    logger.info(f"Starting server on {host}:{port}")
+    logger.info(f"Access the server at http://{host}:{port}")
+    logger.info(f"MCP endpoint: http://{host}:{port}/mcp")
+    
+    uvicorn.run(app, host=host, port=port)
 

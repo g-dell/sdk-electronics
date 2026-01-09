@@ -2,20 +2,18 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import useEmblaCarousel from "embla-carousel-react";
 import { ArrowLeft, ArrowRight, Flame } from "lucide-react";
-import markers from "../electronics/markers.json";
 import { useWidgetProps } from "../use-widget-props";
 import { useOpenAiGlobal } from "../use-openai-global";
 import SliceCard from "./SliceCard";
 
 function App() {
   // Note: This widget is for electronics search
-  // Uses electronics-specific props and markers
+  // Uses electronics-specific props
   const { searchTerm = "" } = useWidgetProps({ searchTerm: "" });
   const searchLabel = String(searchTerm || "").trim();
   // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
-  // Fallback a markers.json se toolOutput non è disponibile (per compatibilità)
   const toolOutput = useOpenAiGlobal("toolOutput");
-  const places = toolOutput?.places || markers?.places || [];
+  const places = toolOutput?.places || [];
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "start",
     loop: false,
