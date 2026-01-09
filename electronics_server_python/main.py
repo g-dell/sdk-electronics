@@ -23,11 +23,22 @@ from pathlib import Path
 
 # Carica il file .env dalla root del progetto (non dalla directory electronics_server_python)
 # __file__ è main.py in electronics_server_python/, quindi parent.parent è la root
-env_path = Path(__file__).resolve().parent.parent / ".env"
-if env_path.exists():
-    load_dotenv(dotenv_path=env_path)
-else:
-    # Prova comunque a caricare (potrebbe essere in un'altra posizione o nelle variabili d'ambiente di sistema)
+# Prova anche nella directory corrente come fallback
+env_paths = [
+    Path(__file__).resolve().parent.parent / ".env",  # Root del progetto
+    Path.cwd() / ".env",  # Directory corrente
+    Path(__file__).resolve().parent / ".env",  # Directory electronics_server_python (fallback)
+]
+
+env_path = None
+for path in env_paths:
+    if path.exists():
+        env_path = path
+        load_dotenv(dotenv_path=env_path)
+        break
+
+if not env_path:
+    # Prova comunque a caricare dalla directory corrente o dalle variabili d'ambiente di sistema
     load_dotenv()
 
 # Configurazione logging per activity logs
@@ -39,10 +50,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Log info sul caricamento del file .env (dopo che logger è stato configurato)
-if env_path.exists():
-    logger.debug(f"Loaded .env file from: {env_path}")
+if env_path:
+    logger.info(f"Loaded .env file from: {env_path}")
+    # Verifica se MOTHERDUCK_TOKEN è presente dopo il caricamento
+    token_after_load = os.getenv("MOTHERDUCK_TOKEN")
+    if token_after_load:
+        logger.info("MOTHERDUCK_TOKEN found in .env file")
+    else:
+        logger.warning("MOTHERDUCK_TOKEN not found in .env file after loading. Check that it exists in the file.")
 else:
-    logger.warning(f".env file not found at: {env_path}. Environment variables will be read from system environment.")
+    logger.warning(f".env file not found in any of the searched paths. Environment variables will be read from system environment.")
+    logger.warning(f"Searched paths: {env_paths}")
 
 from copy import deepcopy
 from dataclasses import dataclass
@@ -135,10 +153,9 @@ async def get_products_from_motherduck():
             return products
     except ValueError as e:
         # Errore di configurazione (es. MOTHERDUCK_TOKEN mancante)
-        # Questo è un caso previsto: in sviluppo locale senza token, i widget usano il fallback JSON
         logger.warning(
             f"MotherDuck token not configured: {e}. "
-            "Widgets will use fallback data from JSON files."
+            "Widgets will display empty data until MOTHERDUCK_TOKEN is configured."
         )
         return []
     except Exception as e:
@@ -957,9 +974,10 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             products = await get_products_from_motherduck()
             product_count = len(products) if products else 0
             if product_count == 0:
-                logger.info(
+                logger.warning(
                     f"Tool {tool_name}: No products retrieved from MotherDuck. "
-                    "This may be due to missing MOTHERDUCK_TOKEN or database connection issues."
+                    "This may be due to missing MOTHERDUCK_TOKEN or database connection issues. "
+                    "Widget will display empty products list."
                 )
             else:
                 logger.info(f"Tool {tool_name}: Retrieved {product_count} products from MotherDuck")
@@ -983,9 +1001,9 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             albums = transform_products_to_albums(products)
             album_count = len(albums) if albums else 0
             if album_count == 0:
-                logger.info(
+                logger.warning(
                     f"Tool {tool_name}: No products retrieved from MotherDuck. "
-                    "Widget will use fallback data from albums.json"
+                    "Widget will display empty albums list."
                 )
             else:
                 logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {album_count} albums")
@@ -1016,9 +1034,9 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             places = transform_products_to_places(products)
             place_count = len(places) if places else 0
             if place_count == 0:
-                logger.info(
+                logger.warning(
                     f"Tool {tool_name}: No products retrieved from MotherDuck. "
-                    "Widget will use fallback data from markers.json"
+                    "Widget will display empty places list."
                 )
             else:
                 logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {place_count} places")
