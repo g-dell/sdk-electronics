@@ -1,6 +1,7 @@
 import React from "react";
 import { useMaxHeight } from "../use-max-height";
 import FilmStrip from "./FilmStrip";
+import SafeImage from "../electronics/SafeImage";
 
 export default function FullscreenViewer({ album }) {
   const maxHeight = useMaxHeight() ?? undefined;
@@ -29,7 +30,7 @@ export default function FullscreenViewer({ album }) {
         <div className="flex-1 min-w-0 px-40 py-10 relative flex items-center justify-center">
           <div className="relative w-full h-full">
             {photo ? (
-              <img
+              <SafeImage
                 src={photo.url}
                 alt={photo.title || album.title}
                 className="absolute inset-0 m-auto rounded-3xl shadow-sm border border-black/10 max-w-full max-h-full object-contain"

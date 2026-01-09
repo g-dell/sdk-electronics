@@ -4,7 +4,7 @@ import { useOpenAiGlobal } from "../use-openai-global";
 import { Settings2, Star } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
-import { Image } from "@openai/apps-sdk-ui/components/Image";
+import SafeImage from "./SafeImage";
 
 function PlaceListItem({ place, isSelected, onClick }) {
   return (
@@ -23,7 +23,7 @@ function PlaceListItem({ place, isSelected, onClick }) {
           className="w-full text-left py-3 transition flex gap-3 items-center cursor-pointer"
           onClick={onClick}
         >
-          <Image
+          <SafeImage
             src={place.thumbnail}
             alt={place.name}
             className="h-16 w-16 rounded-lg object-cover flex-none"

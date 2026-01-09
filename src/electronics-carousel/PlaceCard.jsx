@@ -1,14 +1,14 @@
 import React from "react";
 import { Star } from "lucide-react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
-import { Image } from "@openai/apps-sdk-ui/components/Image";
+import SafeImage from "../electronics/SafeImage";
 
 export default function PlaceCard({ place }) {
   if (!place) return null;
   return (
     <div className="min-w-[220px] select-none max-w-[220px] w-[65vw] sm:w-[220px] self-stretch flex flex-col">
       <div className="w-full">
-        <Image
+        <SafeImage
           src={place.thumbnail}
           alt={place.name}
           className="w-full aspect-square rounded-2xl object-cover ring ring-black/5 shadow-[0px_2px_6px_rgba(0,0,0,0.06)]"

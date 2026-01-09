@@ -1,6 +1,6 @@
 import React from "react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
-import { Image } from "@openai/apps-sdk-ui/components/Image";
+import SafeImage from "../electronics/SafeImage";
 import { Badge } from "@openai/apps-sdk-ui/components/Badge";
 
 function AlbumCard({ album, onSelect }) {
@@ -15,11 +15,10 @@ function AlbumCard({ album, onSelect }) {
     >
       <div className="flex w-full flex-col gap-2">
         <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl shadow-lg">
-          <Image
+          <SafeImage
             src={album.cover}
             alt={album.title}
             className="h-full w-full object-cover"
-            loading="lazy"
           />
           <Badge
             variant="soft"

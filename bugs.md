@@ -53,6 +53,18 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
   - **Sezione correlata**: Sezione 2.2 - Compatibilità dei tipi `CartItem` in `specifications.md`
   - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
 
+### Immagine Blob Storage non accessibile
+- [x] **Bug Immagine Blob Storage - Immagine con permessi negati**: [2026-01-08] L'immagine `img-Ywf9b6rLPQ5YM0rZh2NQEkp8.png` da Azure Blob Storage in `src/electronics/markers.json` (riga 11) non è accessibile, causando errori 409 (Conflict) e "access is not permitted on this storage account" nella console del browser. Questo impedisce il caricamento completo del widget.
+  - **Come si manifesta**: L'immagine non si carica, errore 409 nella Network tab, errore di permessi nella console. Il widget viene visualizzato solo parzialmente.
+  - **Sezione correlata**: `src/electronics/markers.json` - primo elemento "avatar-way-of-water"
+  - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
+
+### Immagini bloccate da ORB (Opaque Response Blocking)
+- [x] **Bug ORB - Immagini electronics-*.png bloccate**: [2026-01-08] Le immagini `electronics-1.png`, `electronics-2.png`, `electronics-3.png`, `electronics-4.png`, `electronics-5.png`, `electronics-6.png` da `https://persistent.oaistatic.com/electronics/` vengono bloccate dal browser con errore `ERR_BLOCKED_BY_ORB` (Opaque Response Blocking). Questo è un meccanismo di sicurezza del browser che blocca risposte opache cross-origin, causando il mancato caricamento delle immagini nel widget.
+  - **Come si manifesta**: Le immagini non si caricano, errore `ERR_BLOCKED_BY_ORB` nella Network tab. Il widget viene visualizzato solo parzialmente senza immagini.
+  - **Sezione correlata**: Tutti i componenti che usano immagini: `PlaceCard.jsx`, `Inspector.jsx`, `AlbumCard.jsx`, `FullscreenViewer.jsx`, `FilmStrip.jsx`, `Sidebar.jsx`
+  - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
+
 ## Bug risolti
 
 ### CORS Error - UI non si carica
@@ -106,6 +118,33 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
     3. Rimosso tipo locale `CartItem` e `NutritionFact` da `src/pizzaz-shop/index.tsx` e aggiunto import `import type { CartItem, NutritionFact } from "../types";`
     4. Rimosso tipo locale `CartItem` da `src/shopping-cart/index.tsx` e aggiunto import `import type { CartItem } from "../types";`
   - **Verificato**: [2026-01-08] L'errore TypeScript `py/new_initial_cart_items.ts(1,34): error TS2304: Cannot find name 'CartItem'` è stato risolto. La build TypeScript ora passa senza errori relativi a `CartItem`. Il tipo è ora condiviso e coerente in tutti i file.
+
+### Immagine Blob Storage non accessibile
+- [x] **Bug Immagine Blob Storage - Immagine con permessi negati**: [2026-01-08]
+  - **Bug trovato**: [2026-01-08] L'immagine `img-Ywf9b6rLPQ5YM0rZh2NQEkp8.png` da Azure Blob Storage in `src/electronics/markers.json` (riga 11) non è accessibile, causando errori 409 (Conflict) e "access is not permitted on this storage account" nella console del browser. Questo impedisce il caricamento completo del widget.
+  - **Bug risolto**: [2026-01-08] L'URL dell'immagine blob storage è stato sostituito con un'immagine valida da `https://persistent.oaistatic.com/electronics/electronics-1.png` per garantire che l'immagine sia accessibile.
+  - **Soluzione applicata**:
+    1. Sostituito l'URL blob storage non accessibile con `https://persistent.oaistatic.com/electronics/electronics-1.png` in `src/electronics/markers.json` (riga 11)
+  - **Verificato**: [2026-01-08] L'immagine ora punta a una risorsa accessibile. L'errore 409 e di permessi non dovrebbe più verificarsi per questo elemento.
+
+### Immagini bloccate da ORB (Opaque Response Blocking)
+- [x] **Bug ORB - Immagini electronics-*.png bloccate**: [2026-01-08]
+  - **Bug trovato**: [2026-01-08] Le immagini `electronics-*.png` da `https://persistent.oaistatic.com/electronics/` vengono bloccate dal browser con errore `ERR_BLOCKED_BY_ORB` (Opaque Response Blocking). Questo è un meccanismo di sicurezza del browser che blocca risposte opache cross-origin, causando il mancato caricamento delle immagini nel widget.
+  - **Bug risolto**: [2026-01-08] È stato creato un componente `SafeImage` che gestisce gli errori di caricamento delle immagini e mostra un placeholder quando un'immagine non può essere caricata. Tutti i componenti che usano immagini sono stati aggiornati per usare `SafeImage` invece di `Image` o tag `img` standard.
+  - **Soluzione applicata**:
+    1. Creato componente `SafeImage` in `src/electronics/SafeImage.jsx` che:
+       - Usa un tag `img` standard con gestione errori tramite `onError`
+       - Mostra un fallback se fornito quando l'immagine fallisce
+       - Mostra un placeholder SVG se nessun fallback è fornito
+       - Resetta lo stato di errore quando l'URL cambia
+    2. Sostituito `Image` da `@openai/apps-sdk-ui` con `SafeImage` in:
+       - `src/electronics-carousel/PlaceCard.jsx`
+       - `src/electronics/Inspector.jsx` (2 occorrenze)
+       - `src/electronics/Sidebar.jsx`
+       - `src/electronics-albums/AlbumCard.jsx`
+       - `src/electronics-albums/FullscreenViewer.jsx`
+       - `src/electronics-albums/FilmStrip.jsx`
+  - **Verificato**: [2026-01-08] Il componente `SafeImage` gestisce correttamente gli errori di caricamento. Quando un'immagine viene bloccata da ORB o fallisce per altri motivi, viene mostrato un placeholder invece di un'immagine rotta, migliorando l'esperienza utente anche quando le immagini non possono essere caricate.
 
 ## Verifiche da fare
 

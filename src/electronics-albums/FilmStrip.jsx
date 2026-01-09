@@ -1,4 +1,5 @@
 import React from "react";
+import SafeImage from "../electronics/SafeImage";
 
 export default function FilmStrip({ album, selectedIndex, onSelect }) {
   return (
@@ -16,11 +17,10 @@ export default function FilmStrip({ album, selectedIndex, onSelect }) {
           }
         >
           <div className="aspect-[5/3] rounded-lg overflow-hidden w-full">
-            <img
+            <SafeImage
               src={photo.url}
               alt={photo.title || `Photo ${idx + 1}`}
               className="h-full w-full object-cover"
-              loading="lazy"
             />
           </div>
         </button>
