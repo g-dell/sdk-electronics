@@ -1,7 +1,7 @@
 import React from "react";
 import SafeImage from "../electronics/SafeImage";
 
-export default function FilmStrip({ album, selectedIndex, onSelect }) {
+export default function FilmStrip({ album, selectedIndex, onSelect, proxyBaseUrl }) {
   return (
     <div className="h-full w-full overflow-auto flex flex-col items-center justify-center p-5 space-y-5">
       {album.photos.map((photo, idx) => (
@@ -21,6 +21,7 @@ export default function FilmStrip({ album, selectedIndex, onSelect }) {
               src={photo.url}
               alt={photo.title || `Photo ${idx + 1}`}
               className="h-full w-full object-cover"
+              proxyBaseUrl={proxyBaseUrl}
             />
           </div>
         </button>

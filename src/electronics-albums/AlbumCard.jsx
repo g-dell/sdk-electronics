@@ -2,8 +2,10 @@ import React from "react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import SafeImage from "../electronics/SafeImage";
 import { Badge } from "@openai/apps-sdk-ui/components/Badge";
+import { useProxyBaseUrl } from "../use-proxy-base-url";
 
 function AlbumCard({ album, onSelect }) {
+  const proxyBaseUrl = useProxyBaseUrl();
   return (
     <Button
       type="button"
@@ -19,6 +21,7 @@ function AlbumCard({ album, onSelect }) {
             src={album.cover}
             alt={album.title}
             className="h-full w-full object-cover"
+            proxyBaseUrl={proxyBaseUrl}
           />
           <Badge
             variant="soft"

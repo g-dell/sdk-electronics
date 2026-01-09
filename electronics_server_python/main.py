@@ -675,6 +675,29 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
             html_content
         )
 
+    # Inject server base URL for proxy configuration
+    # This allows the frontend to know the server URL for proxy requests
+    # Use BASE_URL from environment if available, otherwise use empty string (relative URLs)
+    server_url = base_url or ""
+    
+    # Inject script to set server URL before closing </head> or before </body>
+    injection_script = f"""<script>
+    // Inject server base URL for image proxy configuration
+    if (typeof window !== 'undefined') {{
+      window.__ELECTRONICS_SERVER_URL__ = {repr(server_url)};
+      console.log('[Server] Injected server base URL:', window.__ELECTRONICS_SERVER_URL__);
+    }}
+    </script>"""
+    
+    # Try to inject before </head>, if not found inject before </body>
+    if "</head>" in html_content:
+        html_content = html_content.replace("</head>", injection_script + "\n</head>", 1)
+    elif "</body>" in html_content:
+        html_content = html_content.replace("</body>", injection_script + "\n</body>", 1)
+    else:
+        # If no head or body tag, prepend to HTML
+        html_content = injection_script + "\n" + html_content
+
     contents = [
         types.TextResourceContents(
             uri=widget.template_uri,

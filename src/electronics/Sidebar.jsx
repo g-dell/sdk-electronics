@@ -5,8 +5,10 @@ import { Settings2, Star } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import SafeImage from "./SafeImage";
+import { useProxyBaseUrl } from "../use-proxy-base-url";
 
 function PlaceListItem({ place, isSelected, onClick }) {
+  const proxyBaseUrl = useProxyBaseUrl();
   return (
     <div
       className={
@@ -27,6 +29,7 @@ function PlaceListItem({ place, isSelected, onClick }) {
             src={place.thumbnail}
             alt={place.name}
             className="h-16 w-16 rounded-lg object-cover flex-none"
+            proxyBaseUrl={proxyBaseUrl}
           />
           <div className="min-w-0 text-left">
             <div className="font-medium truncate">{place.name}</div>
