@@ -283,15 +283,6 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
     WARNING - Tool electronics-carousel: No products retrieved from MotherDuck. Widget will display empty places list.
     ```
   - **Verificato**: [2026-01-09] I warning ora sono più informativi e aiutano a identificare quando una lista vuota è causata da un errore di configurazione piuttosto che da un database vuoto. Il messaggio ora include un suggerimento a controllare i log precedenti per errori specifici.
-
-### Warning "No products retrieved from MotherDuck" dopo errori
-- [x] **Bug Logging - Warning ridondante dopo errori**: [2026-01-09]
-  - **Bug trovato**: [2026-01-09] Quando si verifica un errore nel recupero prodotti da MotherDuck (es. pandas mancante), il sistema logga prima un ERROR con il dettaglio dell'errore, poi quando la lista vuota viene processata, viene generato un WARNING aggiuntivo che dice "No products retrieved from MotherDuck. Widget will display empty places list." Questo warning è ridondante e può confondere perché non indica chiaramente che la causa è l'errore precedente.
-  - **Bug risolto**: [2026-01-09] Migliorati i messaggi di warning per includere un suggerimento a controllare i log precedenti per errori. Questo aiuta a distinguere tra lista vuota dovuta a un errore (pandas, token, connessione) e lista vuota perché il database è effettivamente vuoto.
-  - **Soluzione applicata**:
-    1. Modificati i warning in `_call_tool_request` per tool `product-list`, `electronics-albums`, e widget `places` (electronics-carousel, electronics-map, electronics-list, mixed-auth-search)
-    2. Aggiunto messaggio esplicativo: "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
-  - **File modificati**: `electronics_server_python/main.py` (righe ~987, ~1015, ~1047)
   - **Errore nei log**: Quando c'è un errore (es. pandas mancante), si vede:
     ```
     ERROR - Error retrieving products from MotherDuck: Invalid Input Error: 'pandas' is required...
@@ -300,17 +291,30 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
   - **Verificato**: [2026-01-09] I warning ora sono più informativi e aiutano a identificare quando una lista vuota è causata da un errore di configurazione piuttosto che da un database vuoto.
 
 ### AssertionError nel middleware Starlette con risposte SSE
-- [ ] **Bug Middleware - AssertionError con risposte SSE**: [2026-01-09]
-  - **Bug trovato**: [2026-01-09] Quando il server gestisce richieste SSE (Server-Sent Events) per l'endpoint `/mcp`, i middleware `CORSMiddleware` e `CSPMiddleware` tentano di processare le risposte come normali risposte HTTP. Tuttavia, le risposte SSE hanno un formato diverso (streaming continuo) e non seguono il normale flusso request/response HTTP, causando `AssertionError: Unexpected message: {'type': 'http.response.start', ...}` nel middleware Starlette.
-  - **Tentativo di risoluzione**: [2026-01-09] Modificati i middleware per escludere le route SSE (`/mcp` e `/sse`) dalla processazione. Tuttavia, l'errore persiste, suggerendo che il problema potrebbe essere più complesso o che ci siano altre route che causano problemi.
-  - **Soluzione applicata**:
-    1. Aggiunto controllo nelle funzioni `dispatch()` di `CORSMiddleware` e `CSPMiddleware` per escludere route che iniziano con `/mcp` o `/sse`
-    2. Per queste route, le risposte vengono passate direttamente a `call_next()` senza modifiche agli header
-    3. Le altre route continuano a ricevere header CORS e CSP normalmente
-  - **Errore nei log**: `AssertionError: Unexpected message: {'type': 'http.response.start', 'status': 200, 'headers': [(b'content-length', b'0')]}` quando si processano richieste a `/mcp`, `/messages/`, o asset statici.
-  - **Nota tecnica**: Le risposte SSE usano un protocollo di streaming diverso dalle normali risposte HTTP. Il middleware Starlette si aspetta messaggi di tipo `http.response.body` ma le risposte SSE inviano `http.response.start` che non viene gestito correttamente dal middleware. L'errore può verificarsi anche con asset statici se hanno un formato di risposta particolare.
-  - **Stato**: ⚠️ **Parzialmente risolto** - Il controllo per `/mcp` e `/sse` è stato aggiunto ma l'errore persiste in alcuni casi. Potrebbe essere necessario un approccio diverso, come rimuovere completamente i middleware dalle route problematiche o usare un middleware personalizzato che gestisca correttamente le risposte streaming.
-  - **Prossimi passi**: Investigare se ci sono altre route che causano problemi o se serve un approccio diverso per gestire le risposte streaming nel middleware.
+- [ ] **Bug Middleware - AssertionError con risposte SSE (PERSISTE)**: [2026-01-09]
+  - **Bug trovato**: [2026-01-09] Quando il server gestisce richieste SSE (Server-Sent Events) per l'endpoint `/mcp` o route correlate, i middleware `CORSMiddleware` e `CSPMiddleware` tentano di processare le risposte come normali risposte HTTP. Tuttavia, le risposte SSE hanno un formato diverso (streaming continuo) e non seguono il normale flusso request/response HTTP, causando `AssertionError: Unexpected message: {'type': 'http.response.start', ...}` nel middleware Starlette.
+  - **Tentativo di risoluzione 1**: [2026-01-09] Modificati i middleware per escludere le route SSE (`/mcp` e `/sse`) dalla processazione controllando `request.url.path` prima di chiamare `call_next()`. Tuttavia, l'errore persiste perché il problema si verifica durante l'iterazione del body della risposta, non durante la gestione iniziale della richiesta.
+  - **Problema tecnico**: Il middleware Starlette usa `body_stream` per iterare sui chunk della risposta. Quando il middleware cerca di processare il body, si aspetta messaggi di tipo `http.response.body`, ma le risposte SSE (gestite da `sse-starlette`) inviano un secondo messaggio `http.response.start` quando il body è vuoto, causando l'assertion error.
+  - **Errore nei log** (ripetuto in produzione):
+    ```
+    File "/opt/render/project/src/.venv/lib/python3.13/site-packages/starlette/middleware/base.py", line 178, in body_stream
+      assert message["type"] == "http.response.body", f"Unexpected message: {message}"
+    AssertionError: Unexpected message: {'type': 'http.response.start', 'status': 200, 'headers': [(b'content-length', b'0')]}
+    ```
+  - **Impact**: ⚠️ **Non critico** - L'errore si verifica durante la gestione di alcune risposte, ma il server continua a funzionare correttamente. Le richieste vengono elaborate e i widget funzionano. L'errore appare nei log ma non blocca il funzionamento.
+  - **Nota tecnica**: 
+    - Le risposte SSE usano un protocollo di streaming diverso dalle normali risposte HTTP
+    - Il middleware Starlette `BaseHTTPMiddleware` non gestisce correttamente le risposte streaming che hanno un formato ASGI particolare
+    - Il controllo `request.url.path.startswith("/mcp")` bypassa la modifica degli header, ma non previene l'iterazione del body della risposta che causa l'errore
+    - FastMCP usa `sse-starlette` per gestire le risposte SSE, che invia messaggi ASGI in un formato particolare
+  - **Soluzioni possibili** (da investigare):
+    1. Rimuovere completamente i middleware dalle route SSE a livello di applicazione (non solo nel dispatch)
+    2. Usare un middleware personalizzato che rileva le risposte streaming e le gestisce diversamente
+    3. Usare `StreamingResponse` wrapper per le risposte SSE per evitare l'iterazione del body nel middleware
+    4. Aggiornare a versioni più recenti di Starlette/FastMCP che potrebbero gestire meglio questo caso
+    5. Accettare l'errore come non critico se il server funziona correttamente nonostante l'eccezione
+  - **Stato**: ⚠️ **Non risolto - Funzionalità non bloccata** - Il controllo per `/mcp` e `/sse` è stato aggiunto ma l'errore persiste. Il server funziona correttamente nonostante l'errore nei log. Questo è un problema noto con middleware Starlette e risposte SSE che potrebbe richiedere un refactoring più profondo dei middleware o l'accettazione dell'errore come non critico.
+  - **Verificato in produzione**: [2026-01-09] L'errore si verifica nei log ma il server continua a funzionare correttamente. I widget vengono caricati e i dati vengono recuperati correttamente da MotherDuck. L'errore non impatta la funzionalità dell'applicazione.
 
 ### POST /sse restituisce 405 Method Not Allowed
 - [ ] **Bug SSE - POST non supportato su /sse**: [2026-01-09] Nei log di produzione si vede `POST /sse HTTP/1.1" 405 Method Not Allowed`. L'endpoint `/sse` accetta solo GET per le richieste SSE, ma qualcuno sta tentando di fare POST. Questo non è critico (il GET funziona correttamente), ma indica che potrebbe esserci confusione su quale endpoint usare.
