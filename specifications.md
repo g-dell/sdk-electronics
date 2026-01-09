@@ -112,8 +112,8 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
 
 ### 2.3 Migrazione dati da JSON a Database MotherDuck
 - [x] **ALTA PRIORITÀ - Migrazione dati da `markers.json` a database**: I dati dei widget UI (carousel, list, map, albums, shop) attualmente vengono presi da `src/electronics/markers.json`. Questa modifica richiede di migrare tutti i widget per leggere i dati dal database MotherDuck invece che dal file JSON.
-  - **Stato attuale**: ✅ **COMPLETATO** [2026-01-08] Tutti i widget ora leggono i dati da `toolOutput` (popolato dal server Python) con fallback a `markers.json` per compatibilità.
-  - **Obiettivo**: ✅ **RAGGIUNTO** I dati vengono presi dal database MotherDuck (tabella `prodotti_xeel_shop` nello schema `main` del database `app_gpt_elettronica`) quando i tool vengono chiamati.
+  - **Stato attuale**: ✅ **COMPLETATO** [2026-01-09] Tutti i widget ora leggono **esclusivamente** i dati da `toolOutput` (popolato dal server Python). Il fallback a JSON è stato rimosso come richiesto. Gli asset sono stati rigenerati con la build.
+  - **Obiettivo**: ✅ **RAGGIUNTO** I dati vengono presi **solo** dal database MotherDuck (tabella `prodotti_xeel_shop` nello schema `main` del database `app_gpt_elettronica`) quando i tool vengono chiamati.
   - **Soluzione implementata**:
     1. ✅ **Funzione di trasformazione prodotti->places** (`electronics_server_python/main.py`):
        - Creata funzione `transform_products_to_places()` che converte prodotti dal database in formato "places"
@@ -131,26 +131,30 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
        - Per `electronics-carousel`, `electronics-map`, `electronics-list`, `mixed-auth-search`: trasforma prodotti in `places` e passa in `structuredContent`
        - Per `electronics-albums`: trasforma prodotti in `albums` e passa in `structuredContent`
        - Per `product-list`: passa direttamente i prodotti in `structuredContent`
-    4. ✅ **Widget aggiornati per leggere da toolOutput**:
-       - `src/electronics-carousel/index.jsx`: Legge da `toolOutput.places` con fallback a `markers.json`
-       - `src/electronics/index.jsx` (map): Legge da `toolOutput.places` con fallback a `markers.json`
-       - `src/electronics-list/index.jsx`: Legge da `toolOutput.places` con fallback a `markers.json`
-       - `src/mixed-auth-search/index.jsx`: Legge da `toolOutput.places` con fallback a `markers.json`
-       - `src/electronics-albums/index.jsx`: Legge da `toolOutput.albums` con fallback a `albums.json`
-    5. ⚠️ **Fallback mantenuto**: `markers.json` e `albums.json` vengono mantenuti come fallback per compatibilità e per casi in cui `toolOutput` non è disponibile (es. sviluppo locale senza server)
+    4. ✅ **Widget aggiornati per leggere solo da toolOutput** [2026-01-09]:
+       - `src/electronics-carousel/index.jsx`: Legge **solo** da `toolOutput?.places || []` (fallback JSON rimosso)
+       - `src/electronics/index.jsx` (map): Legge **solo** da `toolOutput?.places || []` (fallback JSON rimosso)
+       - `src/electronics-list/index.jsx`: Legge **solo** da `toolOutput?.places || []` (fallback JSON rimosso)
+       - `src/mixed-auth-search/index.jsx`: Legge **solo** da `toolOutput?.places || []` (fallback JSON rimosso)
+       - `src/electronics-albums/index.jsx`: Legge **solo** da `toolOutput?.albums || []` (fallback JSON rimosso)
+    5. ✅ **Asset rigenerati** [2026-01-09]:
+       - Eseguita `pnpm run build` per rigenerare tutti gli asset HTML/JS/CSS con il codice aggiornato
+       - Tutti i widget ora utilizzano esclusivamente i dati da MotherDuck tramite `toolOutput`
+       - Hash asset: `2d2b` (generato il 2026-01-09)
   - **Vantaggi della soluzione**:
     - ✅ Dati dinamici sincronizzati con il database
-    - ✅ Fallback graceful a JSON statico per compatibilità
-    - ✅ Nessuna breaking change: i widget funzionano sia con dati dal DB che da JSON
+    - ✅ Funzionamento esclusivo da database: i widget dipendono solo da MotherDuck
     - ✅ Trasformazione automatica: prodotti del DB vengono automaticamente convertiti nel formato atteso dai widget
+    - ✅ Architettura pulita: nessuna dipendenza da file JSON statici
   - **Note tecniche**:
     - Le coordinate geografiche sono generate automaticamente (default San Francisco) poiché i prodotti non hanno coordinate reali
     - Il rating è un valore di default (4.5) e può essere calcolato in futuro se il database include recensioni
     - Gli albums sono raggruppati per categoria/tag principale del prodotto
+    - **IMPORTANTE**: I widget ora richiedono che il server Python passi i dati tramite `toolOutput`. Se `toolOutput` è vuoto o assente, i widget mostreranno liste vuote.
   - **Prossimi passi opzionali**:
     - [ ] Aggiungere campi geografici reali nel database se disponibili (lat/lon, city)
     - [ ] Calcolare rating da recensioni se disponibili nel database
-    - [ ] Deprecare `markers.json` e `albums.json` una volta verificato che tutto funziona correttamente
+    - [x] ~~Deprecare `markers.json` e `albums.json`~~ **COMPLETATO** - I widget non usano più questi file
 
 ## 3. Build e esecuzione dell'applicazione
 

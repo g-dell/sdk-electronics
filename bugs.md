@@ -262,6 +262,7 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
 
 ### Build e esecuzione
 - [x] **Verifica build frontend**: [2026-01-08] La build è stata testata e completata con successo. Tutti i widget sono stati generati correttamente (pizzaz-shop, pizzaz, pizzaz-albums, pizzaz-carousel, pizzaz-list, kitchen-sink-lite, mixed-auth-past-orders, mixed-auth-search, shopping-cart, solar-system, todo). Alcuni warning sui sourcemap sono presenti ma non bloccanti. - Verificato funzionalmente: `pnpm run build` eseguito con successo il 2026-01-08.
+- [x] **Asset rigenerati dopo rimozione fallback JSON**: [2026-01-09] Dopo la rimozione del fallback JSON dai widget (come richiesto), è stata eseguita una rebuild completa (`pnpm run build`) per rigenerare tutti gli asset HTML/JS/CSS con il codice aggiornato. Tutti i widget ora utilizzano esclusivamente `toolOutput` per i dati da MotherDuck. Hash asset aggiornato: `2d2b`.
 
 - [x] **Verifica server Python**: [2026-01-08] La sintassi del server Python è stata verificata (`python -m py_compile main.py` completato con successo). **Verificato funzionalmente**: [2026-01-08] Il server è stato avviato e testato con successo. Tutti i metodi MCP funzionano correttamente: `list_tools()` restituisce 6 tool, `list_resources()` restituisce 6 risorse, `list_resource_templates()` restituisce 6 template, `read_resource()` legge correttamente le risorse HTML, `call_tool()` esegue correttamente i tool con structured content e validazione input.
 
