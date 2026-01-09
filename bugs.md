@@ -222,6 +222,40 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
   - **Nota**: Anche se `python-dotenv` era già installato nel sistema, è importante dichiararlo in `requirements.txt` per garantire che venga installato quando si clona il progetto o si crea un nuovo ambiente virtuale.
   - **Verificato**: [2026-01-09] La dipendenza `python-dotenv>=1.0.0` è ora presente in `requirements.txt`. Il progetto può essere installato da zero senza errori di import.
 
+### numpy mancante nei requirements.txt
+- [x] **Bug Requirements - numpy non dichiarato**: [2026-01-09]
+  - **Bug trovato**: [2026-01-09] DuckDB richiede `numpy` per funzionare correttamente, in particolare per il metodo `fetchdf()` che converte i risultati delle query in DataFrame pandas. Tuttavia, `numpy` non era presente nel file `requirements.txt`, causando `ModuleNotFoundError: No module named 'numpy'` quando il server tentava di recuperare prodotti da MotherDuck.
+  - **Bug risolto**: [2026-01-09] Aggiunto `numpy>=1.24.0` al file `requirements.txt`. DuckDB usa numpy internamente per operazioni DataFrame e per convertire risultati in formato pandas.
+  - **Soluzione applicata**:
+    1. Aggiunta riga `numpy>=1.24.0  # Richiesto da DuckDB per fetchdf() e operazioni DataFrame` a `electronics_server_python/requirements.txt`
+  - **Errore nei log**: `ModuleNotFoundError: No module named 'numpy'` quando si chiama `con.execute(query).fetchdf()` in `get_products_from_motherduck()`
+  - **Verificato**: [2026-01-09] La dipendenza `numpy>=1.24.0` è ora presente in `requirements.txt`. Il server dovrebbe ora essere in grado di recuperare prodotti da MotherDuck senza errori di import.
+
+### AssertionError nel middleware Starlette con risposte SSE
+- [x] **Bug Middleware - AssertionError con risposte SSE**: [2026-01-09]
+  - **Bug trovato**: [2026-01-09] Quando il server gestisce richieste SSE (Server-Sent Events) per l'endpoint `/mcp`, i middleware `CORSMiddleware` e `CSPMiddleware` tentano di processare le risposte come normali risposte HTTP. Tuttavia, le risposte SSE hanno un formato diverso (streaming continuo) e non seguono il normale flusso request/response HTTP, causando `AssertionError: Unexpected message: {'type': 'http.response.start', ...}` nel middleware Starlette.
+  - **Bug risolto**: [2026-01-09] Modificati i middleware per escludere le route SSE (`/mcp` e `/sse`) dalla processazione. Le risposte SSE vengono ora passate direttamente senza modificare gli header, poiché sono gestite direttamente da `sse-starlette`.
+  - **Soluzione applicata**:
+    1. Aggiunto controllo nelle funzioni `dispatch()` di `CORSMiddleware` e `CSPMiddleware` per escludere route che iniziano con `/mcp` o `/sse`
+    2. Per queste route, le risposte vengono passate direttamente a `call_next()` senza modifiche agli header
+    3. Le altre route continuano a ricevere header CORS e CSP normalmente
+  - **Errore nei log**: `AssertionError: Unexpected message: {'type': 'http.response.start', 'status': 200, 'headers': [(b'content-length', b'0')]}` quando si processano richieste a `/mcp` o `/messages/`
+  - **Nota tecnica**: Le risposte SSE usano un protocollo di streaming diverso dalle normali risposte HTTP. Il middleware Starlette si aspetta messaggi di tipo `http.response.body` ma le risposte SSE inviano `http.response.start` che non viene gestito correttamente dal middleware.
+  - **Verificato**: [2026-01-09] I middleware ora escludono correttamente le route SSE. Le richieste a `/mcp` e `/sse` vengono processate direttamente senza passare attraverso la logica di modifica header, evitando l'errore AssertionError.
+
+### POST /sse restituisce 405 Method Not Allowed
+- [ ] **Bug SSE - POST non supportato su /sse**: [2026-01-09] Nei log di produzione si vede `POST /sse HTTP/1.1" 405 Method Not Allowed`. L'endpoint `/sse` accetta solo GET per le richieste SSE, ma qualcuno sta tentando di fare POST. Questo non è critico (il GET funziona correttamente), ma indica che potrebbe esserci confusione su quale endpoint usare.
+  - **Come si manifesta**: Errori 405 nei log quando viene tentato POST su `/sse`. L'endpoint `/sse` accetta solo GET per Server-Sent Events.
+  - **Sezione correlata**: FastMCP SSE endpoint configuration in `electronics_server_python/main.py`
+  - **Nota**: FastMCP espone `/mcp` come endpoint principale per SSE. L'endpoint `/sse` potrebbe essere un alias o potrebbe non essere esposto direttamente. Il 405 è normale se qualcuno tenta POST invece di GET.
+  - **Stato**: ⚠️ **Non critico** - Il GET funziona correttamente, il POST viene rifiutato come previsto. Potrebbe essere necessario verificare la configurazione del client o documentare correttamente quale endpoint usare.
+
+### 404 Not Found per favicon
+- [ ] **Bug Favicon - Richieste favicon restituiscono 404**: [2026-01-09] Nei log di produzione si vedono richieste `GET /favicon.svg`, `/favicon.png`, `/favicon.ico` che restituiscono 404 Not Found. Questo è normale e non critico, ma può essere risolto aggiungendo un endpoint per servire un favicon o ignorando queste richieste.
+  - **Come si manifesta**: Errori 404 nei log per richieste favicon dal browser. Questo è normale comportamento del browser che cerca automaticamente un favicon.
+  - **Sezione correlata**: Server Python - gestione richieste statiche in `electronics_server_python/main.py`
+  - **Stato**: ⚠️ **Non critico** - Le richieste favicon sono normali e non bloccano il funzionamento del server. Opzionalmente si può aggiungere un endpoint per servire un favicon o ignorare queste richieste nel logging.
+
 ## Verifiche da fare
 
 **Nota**: Le verifiche dettagliate sono state spostate da `specifications.md` a questo file per mantenere `specifications.md` focalizzato solo sulle specifiche da implementare. Le verifiche qui elencate devono essere completate e testate funzionalmente prima di poter essere spuntate definitivamente.

@@ -489,6 +489,11 @@ class CORSMiddleware(BaseHTTPMiddleware):
             
             return response
         
+        # Per risposte SSE (/mcp endpoint), passa direttamente senza modificare headers
+        # Le risposte SSE sono gestite direttamente da sse-starlette e non seguono il normale flusso HTTP
+        if request.url.path.startswith("/mcp") or request.url.path == "/sse":
+            return await call_next(request)
+        
         # Per tutte le altre richieste, processa normalmente e aggiungi header CORS
         response = await call_next(request)
         
@@ -525,6 +530,11 @@ class CSPMiddleware(BaseHTTPMiddleware):
     """
     
     async def dispatch(self, request: Request, call_next):
+        # Per risposte SSE (/mcp endpoint), passa direttamente senza modificare headers
+        # Le risposte SSE sono gestite direttamente da sse-starlette e non seguono il normale flusso HTTP
+        if request.url.path.startswith("/mcp") or request.url.path == "/sse":
+            return await call_next(request)
+        
         response = await call_next(request)
         
         # Costruisci la policy CSP come stringa singola per evitare problemi con h11
