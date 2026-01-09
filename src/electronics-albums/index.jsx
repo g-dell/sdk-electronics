@@ -10,7 +10,10 @@ import AlbumCard from "./AlbumCard";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 
 function AlbumsCarousel({ onSelect }) {
-  const albums = albumsData?.albums || [];
+  // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
+  // Fallback a albums.json se toolOutput non è disponibile (per compatibilità)
+  const toolOutput = useOpenAiGlobal("toolOutput");
+  const albums = toolOutput?.albums || albumsData?.albums || [];
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "center",
     loop: false,

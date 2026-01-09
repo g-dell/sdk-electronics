@@ -39,7 +39,10 @@ function App() {
   const mapRef = useRef(null);
   const mapObj = useRef(null);
   const markerObjs = useRef([]);
-  const places = markers?.places || [];
+  // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
+  // Fallback a markers.json se toolOutput non è disponibile (per compatibilità)
+  const toolOutput = useOpenAiGlobal("toolOutput");
+  const places = toolOutput?.places || markers?.places || [];
   const markerCoords = places.map((p) => p.coords);
   const navigate = useNavigate();
   const location = useLocation();

@@ -6,9 +6,13 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import markers from "../electronics/markers.json";
 import PlaceCard from "./PlaceCard";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
+import { useOpenAiGlobal } from "../use-openai-global";
 
 function App() {
-  const places = markers?.places || [];
+  // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
+  // Fallback a markers.json se toolOutput non è disponibile (per compatibilità)
+  const toolOutput = useOpenAiGlobal("toolOutput");
+  const places = toolOutput?.places || markers?.places || [];
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "center",
     loop: false,

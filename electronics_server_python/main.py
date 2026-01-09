@@ -126,6 +126,191 @@ async def get_products_from_motherduck():
         return []
 
 
+def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Trasforma prodotti dal database MotherDuck in formato 'places' per i widget UI.
+    
+    I widget carousel/map/list/albums si aspettano una struttura 'places' con:
+    - id, name, coords (lat, lon), description, city, rating, price (stringa), thumbnail
+    
+    I prodotti dal database hanno:
+    - id, name, price (number), description, image, tags, highlights
+    
+    Questa funzione mappa i campi e genera valori default per campi mancanti (coords, city, rating).
+    
+    Args:
+        products: Lista di prodotti dal database (dizionari Python)
+    
+    Returns:
+        Lista di 'places' nel formato atteso dai widget
+    """
+    if not products:
+        return []
+    
+    # Coordinate di default per San Francisco (dove sono i place attuali in markers.json)
+    # Distribuite in diverse zone della città per varietà visiva
+    default_coords = [
+        [-122.4098, 37.8001],  # North Beach
+        [-122.4093, 37.7990],  # North Beach
+        [-122.4255, 37.7613],  # Mission
+        [-122.4388, 37.7775],  # Alamo Square
+        [-122.4077, 37.7990],  # North Beach
+        [-122.4097, 37.7992],  # North Beach
+        [-122.4380, 37.7722],  # Lower Haight
+        [-122.4123, 37.7899],  # Nob Hill
+        [-122.4135, 37.7805],  # SoMa
+        [-122.4019, 37.7818],  # Yerba Buena
+        [-122.4194, 37.7749],  # Mission
+        [-122.4313, 37.7849],  # Western Addition
+    ]
+    
+    # Città di default
+    default_cities = [
+        "San Francisco",
+        "North Beach",
+        "Mission",
+        "Alamo Square",
+        "SoMa",
+        "Nob Hill",
+        "Lower Haight",
+        "Yerba Buena",
+    ]
+    
+    places = []
+    for idx, product in enumerate(products):
+        # Ottieni il prezzo e convertilo in formato stringa ($, $$, $$$)
+        price_num = product.get("price") or product.get("prices", {}).get("amountMax", 0)
+        if isinstance(price_num, (int, float)):
+            if price_num < 50:
+                price_str = "$"
+            elif price_num < 100:
+                price_str = "$$"
+            else:
+                price_str = "$$$"
+        else:
+            price_str = "$$"  # Default
+        
+        # Genera coordinate usando pattern circolare sulle coordinate default
+        coords = default_coords[idx % len(default_coords)]
+        
+        # Genera città usando pattern circolare
+        city = default_cities[idx % len(default_cities)]
+        
+        # Rating default (o calcolato se disponibile nel database)
+        rating = 4.5  # Rating di default, potrebbe essere calcolato da recensioni se disponibili
+        
+        # Mappa i campi
+        place = {
+            "id": product.get("id", f"product-{idx}"),
+            "name": product.get("name", "Unknown Product"),
+            "coords": coords,
+            "description": product.get("description") or product.get("shortDescription", ""),
+            "city": city,
+            "rating": rating,
+            "price": price_str,
+            "thumbnail": product.get("image") or product.get("imageURLs", ""),  # Mappa image/imageURLs -> thumbnail
+        }
+        
+        # Assicurati che thumbnail sia una stringa (se imageURLs è una lista, prendi il primo)
+        if isinstance(place["thumbnail"], list):
+            place["thumbnail"] = place["thumbnail"][0] if place["thumbnail"] else ""
+        elif not place["thumbnail"]:
+            place["thumbnail"] = ""
+        
+        places.append(place)
+    
+    return places
+
+
+def transform_products_to_albums(products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Trasforma prodotti dal database MotherDuck in formato 'albums' per il widget albums.
+    
+    Il widget albums si aspetta una struttura con:
+    - albums array
+      - id, title, cover
+      - photos array con id, title, url
+    
+    Strategia: Raggruppa prodotti per categoria/tag o crea album tematici.
+    Per semplicità, crea album basati sui tag più comuni dei prodotti.
+    
+    Args:
+        products: Lista di prodotti dal database (dizionari Python)
+    
+    Returns:
+        Lista di 'albums' nel formato atteso dal widget albums
+    """
+    if not products:
+        return []
+    
+    # Raggruppa prodotti per tag principale (primo tag più comune)
+    # Oppure crea album tematici
+    albums_map = {}
+    
+    for product in products:
+        tags = product.get("tags", []) or []
+        if isinstance(tags, str):
+            tags = [tag.strip() for tag in tags.split(",")]
+        
+        # Usa il primo tag come categoria, o "General" se non ci sono tag
+        category = tags[0] if tags else "General Electronics"
+        
+        # Normalizza il nome della categoria per l'id dell'album
+        album_id = category.lower().replace(" ", "-").replace("&", "and")[:30]
+        
+        if album_id not in albums_map:
+            albums_map[album_id] = {
+                "id": album_id,
+                "title": category,
+                "cover": product.get("image") or product.get("imageURLs", "") or "",
+                "photos": [],
+            }
+            
+            # Assicurati che cover sia una stringa
+            if isinstance(albums_map[album_id]["cover"], list):
+                albums_map[album_id]["cover"] = albums_map[album_id]["cover"][0] if albums_map[album_id]["cover"] else ""
+        
+        # Aggiungi prodotto come photo nell'album
+        photo = {
+            "id": product.get("id", f"photo-{len(albums_map[album_id]['photos'])}"),
+            "title": product.get("name", "Product"),
+            "url": product.get("image") or product.get("imageURLs", "") or "",
+        }
+        
+        # Assicurati che url sia una stringa
+        if isinstance(photo["url"], list):
+            photo["url"] = photo["url"][0] if photo["url"] else ""
+        
+        albums_map[album_id]["photos"].append(photo)
+    
+    # Se non ci sono album creati (nessun tag), crea un album unico con tutti i prodotti
+    if not albums_map:
+        albums_map["all-products"] = {
+            "id": "all-products",
+            "title": "All Products",
+            "cover": products[0].get("image") or products[0].get("imageURLs", "") if products else "",
+            "photos": [],
+        }
+        
+        if isinstance(albums_map["all-products"]["cover"], list):
+            albums_map["all-products"]["cover"] = albums_map["all-products"]["cover"][0] if albums_map["all-products"]["cover"] else ""
+        
+        for product in products:
+            photo = {
+                "id": product.get("id", f"photo-{len(albums_map['all-products']['photos'])}"),
+                "title": product.get("name", "Product"),
+                "url": product.get("image") or product.get("imageURLs", "") or "",
+            }
+            if isinstance(photo["url"], list):
+                photo["url"] = photo["url"][0] if photo["url"] else ""
+            albums_map["all-products"]["photos"].append(photo)
+    
+    # Converti dict in lista e limita a massimo 4 album
+    albums = list(albums_map.values())[:4]
+    
+    return albums
+
+
 @lru_cache(maxsize=None)
 def _load_widget_html(component_name: str) -> str:
     html_path = ASSETS_DIR / f"{component_name}.html"
@@ -591,8 +776,62 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     _meta=_tool_invocation_meta(widget),
                 )
             )
+        elif tool_name == "electronics-albums":
+            # Widget che usa formato 'albums' - recupera prodotti e trasforma in albums
+            logger.info(f"Tool {tool_name}: Fetching products from MotherDuck and transforming to albums")
+            products = await get_products_from_motherduck()
+            albums = transform_products_to_albums(products)
+            album_count = len(albums) if albums else 0
+            logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {album_count} albums")
+            
+            # Valida che non ci siano argomenti inattesi
+            if arguments:
+                logger.warning(
+                    f"Tool {tool_name}: Received unexpected arguments: {list(arguments.keys())}. "
+                    "Ignoring arguments as this tool does not require input."
+                )
+            
+            result = types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=widget.response_text,
+                        )
+                    ],
+                    structuredContent={"albums": albums},
+                    _meta=_tool_invocation_meta(widget),
+                )
+            )
+        elif tool_name in ["electronics-carousel", "electronics-map", "electronics-list", "mixed-auth-search"]:
+            # Widget che usano formato 'places' - recupera prodotti e trasforma in places
+            logger.info(f"Tool {tool_name}: Fetching products from MotherDuck and transforming to places")
+            products = await get_products_from_motherduck()
+            places = transform_products_to_places(products)
+            place_count = len(places) if places else 0
+            logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {place_count} places")
+            
+            # Valida che non ci siano argomenti inattesi
+            if arguments:
+                logger.warning(
+                    f"Tool {tool_name}: Received unexpected arguments: {list(arguments.keys())}. "
+                    "Ignoring arguments as this tool does not require input."
+                )
+            
+            result = types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=widget.response_text,
+                        )
+                    ],
+                    structuredContent={"places": places},
+                    _meta=_tool_invocation_meta(widget),
+                )
+            )
         else:
-            # Widget di visualizzazione che non richiedono input
+            # Widget di visualizzazione che non richiedono input e non usano database
             # Valida che non ci siano argomenti inattesi
             if arguments:
                 logger.warning(

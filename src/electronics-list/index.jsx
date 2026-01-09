@@ -4,9 +4,13 @@ import markers from "../electronics/markers.json";
 import { PlusCircle, Star } from "lucide-react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { Image } from "@openai/apps-sdk-ui/components/Image";
+import { useOpenAiGlobal } from "../use-openai-global";
 
 function App() {
-  const places = markers?.places || [];
+  // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
+  // Fallback a markers.json se toolOutput non è disponibile (per compatibilità)
+  const toolOutput = useOpenAiGlobal("toolOutput");
+  const places = toolOutput?.places || markers?.places || [];
 
   return (
     <div className="antialiased w-full text-black px-4 pb-2 border border-black/10 rounded-2xl sm:rounded-3xl overflow-hidden bg-white">

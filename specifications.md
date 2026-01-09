@@ -111,14 +111,46 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
   - **Nota**: Per dettagli su bug trovati e risolti, vedere `bugs.md` sezione "Bug risolti - 2.2 Compatibilità dei tipi `CartItem`"
 
 ### 2.3 Migrazione dati da JSON a Database MotherDuck
-- [ ] **ALTA PRIORITÀ - Migrazione dati da `markers.json` a database**: I dati dei widget UI (carousel, list, map, albums, shop) attualmente vengono presi da `src/electronics/markers.json`. Questa modifica richiede di migrare tutti i widget per leggere i dati dal database MotherDuck invece che dal file JSON.
-  - **Stato attuale**: Tutti i widget (carousel, list, map, albums, shop) leggono i dati da `src/electronics/markers.json` tramite `import markers from "../electronics/markers.json"`
-  - **Obiettivo**: I dati devono essere presi dal database MotherDuck (tabella `prodotti_xeel_shop` nello schema `main` del database `app_gpt_elettronica`) invece che dal file JSON statico.
-  - **Azioni richieste**:
-    1. Modificare i widget per leggere dati da `toolOutput` (che viene popolato dal server Python quando recupera i dati da MotherDuck)
-    2. Aggiornare il server Python per passare i dati di MotherDuck ai widget esistenti quando vengono chiamati
-    3. Rimuovere o deprecare `src/electronics/markers.json` una volta completata la migrazione
-  - **Priorità**: **ALTA PRIORITÀ** - Questa è una modifica fondamentale per rendere i dati dinamici e sincronizzati con il database.
+- [x] **ALTA PRIORITÀ - Migrazione dati da `markers.json` a database**: I dati dei widget UI (carousel, list, map, albums, shop) attualmente vengono presi da `src/electronics/markers.json`. Questa modifica richiede di migrare tutti i widget per leggere i dati dal database MotherDuck invece che dal file JSON.
+  - **Stato attuale**: ✅ **COMPLETATO** [2026-01-08] Tutti i widget ora leggono i dati da `toolOutput` (popolato dal server Python) con fallback a `markers.json` per compatibilità.
+  - **Obiettivo**: ✅ **RAGGIUNTO** I dati vengono presi dal database MotherDuck (tabella `prodotti_xeel_shop` nello schema `main` del database `app_gpt_elettronica`) quando i tool vengono chiamati.
+  - **Soluzione implementata**:
+    1. ✅ **Funzione di trasformazione prodotti->places** (`electronics_server_python/main.py`):
+       - Creata funzione `transform_products_to_places()` che converte prodotti dal database in formato "places"
+       - Mappa i campi: `id`, `name`, `price` (numero → stringa $/$$/$$$), `description`, `image` → `thumbnail`
+       - Genera valori default per campi mancanti:
+         - `coords`: Coordinate di default per San Francisco (distribuite in diverse zone)
+         - `city`: Nome città di default basato su pattern circolare
+         - `rating`: Rating di default 4.5 (può essere calcolato in futuro se disponibile)
+    2. ✅ **Funzione di trasformazione prodotti->albums** (`electronics_server_python/main.py`):
+       - Creata funzione `transform_products_to_albums()` che raggruppa prodotti per categoria/tag
+       - Crea album tematici basati sui tag dei prodotti
+       - Ogni prodotto diventa una "photo" nell'album corrispondente
+    3. ✅ **Server Python aggiornato** (`electronics_server_python/main.py`):
+       - Modificato `_call_tool_request` per recuperare prodotti da MotherDuck quando necessario
+       - Per `electronics-carousel`, `electronics-map`, `electronics-list`, `mixed-auth-search`: trasforma prodotti in `places` e passa in `structuredContent`
+       - Per `electronics-albums`: trasforma prodotti in `albums` e passa in `structuredContent`
+       - Per `product-list`: passa direttamente i prodotti in `structuredContent`
+    4. ✅ **Widget aggiornati per leggere da toolOutput**:
+       - `src/electronics-carousel/index.jsx`: Legge da `toolOutput.places` con fallback a `markers.json`
+       - `src/electronics/index.jsx` (map): Legge da `toolOutput.places` con fallback a `markers.json`
+       - `src/electronics-list/index.jsx`: Legge da `toolOutput.places` con fallback a `markers.json`
+       - `src/mixed-auth-search/index.jsx`: Legge da `toolOutput.places` con fallback a `markers.json`
+       - `src/electronics-albums/index.jsx`: Legge da `toolOutput.albums` con fallback a `albums.json`
+    5. ⚠️ **Fallback mantenuto**: `markers.json` e `albums.json` vengono mantenuti come fallback per compatibilità e per casi in cui `toolOutput` non è disponibile (es. sviluppo locale senza server)
+  - **Vantaggi della soluzione**:
+    - ✅ Dati dinamici sincronizzati con il database
+    - ✅ Fallback graceful a JSON statico per compatibilità
+    - ✅ Nessuna breaking change: i widget funzionano sia con dati dal DB che da JSON
+    - ✅ Trasformazione automatica: prodotti del DB vengono automaticamente convertiti nel formato atteso dai widget
+  - **Note tecniche**:
+    - Le coordinate geografiche sono generate automaticamente (default San Francisco) poiché i prodotti non hanno coordinate reali
+    - Il rating è un valore di default (4.5) e può essere calcolato in futuro se il database include recensioni
+    - Gli albums sono raggruppati per categoria/tag principale del prodotto
+  - **Prossimi passi opzionali**:
+    - [ ] Aggiungere campi geografici reali nel database se disponibili (lat/lon, city)
+    - [ ] Calcolare rating da recensioni se disponibili nel database
+    - [ ] Deprecare `markers.json` e `albums.json` una volta verificato che tutto funziona correttamente
 
 ## 3. Build e esecuzione dell'applicazione
 
