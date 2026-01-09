@@ -3,12 +3,14 @@ import "../index.css";
 import { createRoot } from "react-dom/client";
 import useEmblaCarousel from "embla-carousel-react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import markers from "../electronics/markers.json";
 import PlaceCard from "./PlaceCard";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
+import { useOpenAiGlobal } from "../use-openai-global";
 
 function App() {
-  const places = markers?.places || [];
+  // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
+  const toolOutput = useOpenAiGlobal("toolOutput");
+  const places = toolOutput?.places || [];
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "center",
     loop: false,

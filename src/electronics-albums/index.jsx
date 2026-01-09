@@ -2,7 +2,6 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import useEmblaCarousel from "embla-carousel-react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import albumsData from "./albums.json";
 import { useMaxHeight } from "../use-max-height";
 import { useOpenAiGlobal } from "../use-openai-global";
 import FullscreenViewer from "./FullscreenViewer";
@@ -10,7 +9,9 @@ import AlbumCard from "./AlbumCard";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 
 function AlbumsCarousel({ onSelect }) {
-  const albums = albumsData?.albums || [];
+  // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
+  const toolOutput = useOpenAiGlobal("toolOutput");
+  const albums = toolOutput?.albums || [];
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "center",
     loop: false,

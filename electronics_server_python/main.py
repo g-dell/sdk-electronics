@@ -19,8 +19,27 @@ import logging
 import duckdb
 from datetime import datetime
 from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+# Carica il file .env dalla root del progetto (non dalla directory electronics_server_python)
+# __file__ è main.py in electronics_server_python/, quindi parent.parent è la root
+# Prova anche nella directory corrente come fallback
+env_paths = [
+    Path(__file__).resolve().parent.parent / ".env",  # Root del progetto
+    Path.cwd() / ".env",  # Directory corrente
+    Path(__file__).resolve().parent / ".env",  # Directory electronics_server_python (fallback)
+]
+
+env_path = None
+for path in env_paths:
+    if path.exists():
+        env_path = path
+        load_dotenv(dotenv_path=env_path)
+        break
+
+if not env_path:
+    # Prova comunque a caricare dalla directory corrente o dalle variabili d'ambiente di sistema
+    load_dotenv()
 
 # Configurazione logging per activity logs
 logging.basicConfig(
@@ -30,6 +49,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Log info sul caricamento del file .env (dopo che logger è stato configurato)
+if env_path:
+    logger.info(f"Loaded .env file from: {env_path}")
+    # Verifica se MOTHERDUCK_TOKEN è presente dopo il caricamento
+    token_after_load = os.getenv("MOTHERDUCK_TOKEN")
+    if token_after_load:
+        logger.info("MOTHERDUCK_TOKEN found in .env file")
+    else:
+        logger.warning("MOTHERDUCK_TOKEN not found in .env file after loading. Check that it exists in the file.")
+else:
+    logger.warning(f".env file not found in any of the searched paths. Environment variables will be read from system environment.")
+    logger.warning(f"Searched paths: {env_paths}")
+
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import lru_cache
@@ -37,6 +69,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import mcp.types as types
+import uvicorn
 from fastapi import Request, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 from mcp.server.fastmcp import FastMCP
@@ -46,6 +79,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse as StarletteHTMLResponse, Response
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+import httpx
+from urllib.parse import urlparse, urlencode
 
 
 @dataclass(frozen=True)
@@ -118,12 +153,232 @@ async def get_products_from_motherduck():
             return products
     except ValueError as e:
         # Errore di configurazione (es. MOTHERDUCK_TOKEN mancante)
-        logger.error(f"MotherDuck configuration error: {e}")
+        logger.warning(
+            f"MotherDuck token not configured: {e}. "
+            "Widgets will display empty data until MOTHERDUCK_TOKEN is configured."
+        )
         return []
     except Exception as e:
         # Altri errori (es. connessione, query, ecc.)
         logger.error(f"Error retrieving products from MotherDuck: {e}", exc_info=True)
         return []
+
+
+def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Trasforma prodotti dal database MotherDuck in formato 'places' per i widget UI.
+    
+    I widget carousel/map/list/albums si aspettano una struttura 'places' con:
+    - id, name, coords (lat, lon), description, city, rating, price (stringa), thumbnail
+    
+    I prodotti dal database prodotti_xeel_shop hanno:
+    - id, name, prices.amountMax/prices.amountMin, descrizione_prodotto, imageURLs, 
+      voto_prodotto_1_5, categories, primaryCategories
+    
+    Questa funzione mappa i campi dal database e genera valori default per campi mancanti 
+    (coords, city - generati automaticamente).
+    
+    Mapping colonne DB -> places:
+    - id -> id
+    - name -> name  
+    - prices.amountMax -> price (convertito in $/$$/$$$)
+    - descrizione_prodotto -> description
+    - imageURLs -> thumbnail
+    - voto_prodotto_1_5 -> rating (con fallback a 4.5)
+    - coords, city -> generati automaticamente (default San Francisco)
+    
+    Args:
+        products: Lista di prodotti dal database (dizionari Python)
+    
+    Returns:
+        Lista di 'places' nel formato atteso dai widget
+    """
+    if not products:
+        return []
+    
+    # Coordinate di default per San Francisco (dove sono i place attuali in markers.json)
+    # Distribuite in diverse zone della città per varietà visiva
+    default_coords = [
+        [-122.4098, 37.8001],  # North Beach
+        [-122.4093, 37.7990],  # North Beach
+        [-122.4255, 37.7613],  # Mission
+        [-122.4388, 37.7775],  # Alamo Square
+        [-122.4077, 37.7990],  # North Beach
+        [-122.4097, 37.7992],  # North Beach
+        [-122.4380, 37.7722],  # Lower Haight
+        [-122.4123, 37.7899],  # Nob Hill
+        [-122.4135, 37.7805],  # SoMa
+        [-122.4019, 37.7818],  # Yerba Buena
+        [-122.4194, 37.7749],  # Mission
+        [-122.4313, 37.7849],  # Western Addition
+    ]
+    
+    # Città di default
+    default_cities = [
+        "San Francisco",
+        "North Beach",
+        "Mission",
+        "Alamo Square",
+        "SoMa",
+        "Nob Hill",
+        "Lower Haight",
+        "Yerba Buena",
+    ]
+    
+    places = []
+    for idx, product in enumerate(products):
+        # Ottieni il prezzo da prices.amountMax (colonna nel DB con dot notation)
+        # DuckDB restituisce le colonne con dot come chiavi con dot o come dict annidato
+        price_num = 0
+        if "prices.amountMax" in product:
+            price_num = product.get("prices.amountMax", 0)
+        elif isinstance(product.get("prices"), dict):
+            price_num = product.get("prices", {}).get("amountMax", 0)
+        
+        # Converti prezzo in formato stringa ($, $$, $$$)
+        if isinstance(price_num, (int, float)) and price_num > 0:
+            if price_num < 50:
+                price_str = "$"
+            elif price_num < 100:
+                price_str = "$$"
+            else:
+                price_str = "$$$"
+        else:
+            price_str = "$$"  # Default
+        
+        # Genera coordinate usando pattern circolare sulle coordinate default
+        coords = default_coords[idx % len(default_coords)]
+        
+        # Genera città usando pattern circolare
+        city = default_cities[idx % len(default_cities)]
+        
+        # Rating dal database (voto_prodotto_1_5) o default
+        rating = product.get("voto_prodotto_1_5", 4.5)
+        if not isinstance(rating, (int, float)) or rating <= 0:
+            rating = 4.5  # Default se non valido
+        
+        # Mappa i campi usando i nomi colonne corretti del database
+        place = {
+            "id": product.get("id", f"product-{idx}"),
+            "name": product.get("name", "Unknown Product"),
+            "coords": coords,
+            "description": product.get("descrizione_prodotto", ""),  # Usa descrizione_prodotto dal DB
+            "city": city,
+            "rating": rating,
+            "price": price_str,
+            "thumbnail": product.get("imageURLs", ""),  # Usa solo imageURLs (non esiste "image" nel DB)
+        }
+        
+        # Assicurati che thumbnail sia una stringa (se imageURLs è una lista, prendi il primo)
+        if isinstance(place["thumbnail"], list):
+            place["thumbnail"] = place["thumbnail"][0] if place["thumbnail"] else ""
+        elif not place["thumbnail"]:
+            place["thumbnail"] = ""
+        
+        places.append(place)
+    
+    return places
+
+
+def transform_products_to_albums(products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Trasforma prodotti dal database MotherDuck in formato 'albums' per il widget albums.
+    
+    Il widget albums si aspetta una struttura con:
+    - albums array
+      - id, title, cover
+      - photos array con id, title, url
+    
+    Strategia: Raggruppa prodotti per categoria (primaryCategories o categories).
+    I prodotti dal database prodotti_xeel_shop hanno:
+    - primaryCategories (colonna preferita) o categories (fallback)
+    - imageURLs per le immagini
+    - name per il titolo
+    
+    Args:
+        products: Lista di prodotti dal database (dizionari Python)
+    
+    Returns:
+        Lista di 'albums' nel formato atteso dal widget albums
+    """
+    if not products:
+        return []
+    
+    # Raggruppa prodotti per tag principale (primo tag più comune)
+    # Oppure crea album tematici
+    albums_map = {}
+    
+    for product in products:
+        # Usa primaryCategories o categories dal database (non esiste "tags")
+        categories = []
+        if product.get("primaryCategories"):
+            if isinstance(product["primaryCategories"], list):
+                categories = product["primaryCategories"]
+            elif isinstance(product["primaryCategories"], str):
+                categories = [cat.strip() for cat in product["primaryCategories"].split(",")]
+        elif product.get("categories"):
+            if isinstance(product["categories"], list):
+                categories = product["categories"]
+            elif isinstance(product["categories"], str):
+                categories = [cat.strip() for cat in product["categories"].split(",")]
+        
+        # Usa la prima categoria come categoria principale, o "General" se non ci sono
+        category = categories[0] if categories else "General Electronics"
+        
+        # Normalizza il nome della categoria per l'id dell'album
+        album_id = category.lower().replace(" ", "-").replace("&", "and")[:30]
+        
+        if album_id not in albums_map:
+            albums_map[album_id] = {
+                "id": album_id,
+                "title": category,
+                "cover": product.get("imageURLs", "") or "",  # Usa solo imageURLs (non esiste "image" nel DB)
+                "photos": [],
+            }
+            
+            # Assicurati che cover sia una stringa
+            if isinstance(albums_map[album_id]["cover"], list):
+                albums_map[album_id]["cover"] = albums_map[album_id]["cover"][0] if albums_map[album_id]["cover"] else ""
+        
+        # Aggiungi prodotto come photo nell'album
+        photo = {
+            "id": product.get("id", f"photo-{len(albums_map[album_id]['photos'])}"),
+            "title": product.get("name", "Product"),
+            "url": product.get("imageURLs", "") or "",  # Usa solo imageURLs (non esiste "image" nel DB)
+        }
+        
+        # Assicurati che url sia una stringa
+        if isinstance(photo["url"], list):
+            photo["url"] = photo["url"][0] if photo["url"] else ""
+        
+        albums_map[album_id]["photos"].append(photo)
+    
+    # Se non ci sono album creati (nessun tag), crea un album unico con tutti i prodotti
+    if not albums_map:
+        albums_map["all-products"] = {
+            "id": "all-products",
+            "title": "All Products",
+            "cover": products[0].get("image") or products[0].get("imageURLs", "") if products else "",
+            "photos": [],
+        }
+        
+        if isinstance(albums_map["all-products"]["cover"], list):
+            albums_map["all-products"]["cover"] = albums_map["all-products"]["cover"][0] if albums_map["all-products"]["cover"] else ""
+        
+        for product in products:
+            photo = {
+                "id": product.get("id", f"photo-{len(albums_map['all-products']['photos'])}"),
+                "title": product.get("name", "Product"),
+                "url": product.get("image") or product.get("imageURLs", "") or "",
+            }
+            if isinstance(photo["url"], list):
+                photo["url"] = photo["url"][0] if photo["url"] else ""
+            albums_map["all-products"]["photos"].append(photo)
+    
+    # Converti dict in lista e limita a massimo 4 album
+    albums = list(albums_map.values())[:4]
+    
+    return albums
 
 
 @lru_cache(maxsize=None)
@@ -232,6 +487,73 @@ def _transport_security_settings() -> TransportSecuritySettings:
     )
 
 
+class CORSMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware per aggiungere CORS (Cross-Origin Resource Sharing) headers alle risposte HTTP.
+    
+    Permette al browser di caricare risorse (JS, CSS) da origini diverse, necessario
+    quando il widget viene caricato da ChatGPT che ha un'origine diversa dal server.
+    """
+    
+    async def dispatch(self, request: Request, call_next):
+        # Gestisci richieste OPTIONS (preflight) prima di chiamare il prossimo middleware
+        if request.method == "OPTIONS":
+            origin = request.headers.get("origin")
+            allowed_origins = _split_env_list(os.getenv("MCP_ALLOWED_ORIGINS"))
+            
+            response = Response(status_code=200)
+            
+            # Imposta Access-Control-Allow-Origin
+            if not allowed_origins:
+                # Permetti tutte le origini (utile per sviluppo e per ChatGPT)
+                response.headers["Access-Control-Allow-Origin"] = "*"
+            elif origin and origin in allowed_origins:
+                response.headers["Access-Control-Allow-Origin"] = origin
+            elif origin:
+                # Se l'origine non è nella lista ma è presente, la permettiamo comunque
+                # (utile per ChatGPT che può avere origini dinamiche)
+                response.headers["Access-Control-Allow-Origin"] = origin
+            
+            # Header necessari per CORS
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            response.headers["Access-Control-Max-Age"] = "86400"  # 24 ore
+            
+            return response
+        
+        # Per risposte SSE (/mcp endpoint), passa direttamente senza modificare headers
+        # Le risposte SSE sono gestite direttamente da sse-starlette e non seguono il normale flusso HTTP
+        if request.url.path.startswith("/mcp") or request.url.path == "/sse":
+            return await call_next(request)
+        
+        # Per tutte le altre richieste, processa normalmente e aggiungi header CORS
+        response = await call_next(request)
+        
+        # Ottieni l'origine della richiesta
+        origin = request.headers.get("origin")
+        
+        # Lista di origini permesse (può essere configurata via env)
+        allowed_origins = _split_env_list(os.getenv("MCP_ALLOWED_ORIGINS"))
+        
+        # Imposta Access-Control-Allow-Origin
+        if not allowed_origins:
+            # Permetti tutte le origini (utile per sviluppo e per ChatGPT)
+            response.headers["Access-Control-Allow-Origin"] = "*"
+        elif origin and origin in allowed_origins:
+            # Permetti solo origini specificate
+            response.headers["Access-Control-Allow-Origin"] = origin
+        elif origin:
+            # Se l'origine non è nella lista ma è presente, la permettiamo comunque
+            # (utile per ChatGPT che può avere origini dinamiche)
+            response.headers["Access-Control-Allow-Origin"] = origin
+        
+        # Header necessari per CORS
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        
+        return response
+
+
 class CSPMiddleware(BaseHTTPMiddleware):
     """
     Middleware per aggiungere Content Security Policy (CSP) headers alle risposte HTTP.
@@ -240,6 +562,11 @@ class CSPMiddleware(BaseHTTPMiddleware):
     """
     
     async def dispatch(self, request: Request, call_next):
+        # Per risposte SSE (/mcp endpoint), passa direttamente senza modificare headers
+        # Le risposte SSE sono gestite direttamente da sse-starlette e non seguono il normale flusso HTTP
+        if request.url.path.startswith("/mcp") or request.url.path == "/sse":
+            return await call_next(request)
+        
         response = await call_next(request)
         
         # Costruisci la policy CSP come stringa singola per evitare problemi con h11
@@ -263,6 +590,156 @@ class CSPMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         
         return response
+
+
+async def proxy_image_handler(request: Request):
+    """
+    Proxy endpoint per servire immagini esterne con header CORS corretti.
+    
+    Risolve il problema ERR_BLOCKED_BY_ORB (Opaque Response Blocking) che si verifica
+    quando il browser blocca immagini cross-origin senza header CORS appropriati.
+    
+    Query parameters:
+        url (required): URL dell'immagine da proxyare (deve essere URL-encoded)
+    
+    Returns:
+        Response con l'immagine e header CORS corretti, oppure errore 400/500
+    """
+    # Estrai l'URL dell'immagine dai query parameters
+    image_url = request.query_params.get("url")
+    
+    if not image_url:
+        logger.warning("Proxy image request without 'url' parameter")
+        return Response(
+            content="Missing 'url' parameter",
+            status_code=400,
+            media_type="text/plain"
+        )
+    
+    # Valida che sia un URL valido
+    try:
+        parsed_url = urlparse(image_url)
+        if not parsed_url.scheme or not parsed_url.netloc:
+            raise ValueError("Invalid URL format")
+        
+        # Whitelist di domini permessi (opzionale, per sicurezza)
+        # Per ora permettiamo tutti i domini, ma si può restringere se necessario
+        allowed_domains = os.getenv("PROXY_ALLOWED_DOMAINS", "").split(",")
+        if allowed_domains and allowed_domains[0]:  # Se configurato
+            domain = parsed_url.netloc.lower()
+            if not any(allowed in domain for allowed in allowed_domains if allowed):
+                logger.warning(f"Proxy request blocked for domain: {domain}")
+                return Response(
+                    content="Domain not allowed",
+                    status_code=403,
+                    media_type="text/plain"
+                )
+    except Exception as e:
+        logger.warning(f"Invalid URL in proxy request: {image_url}, error: {e}")
+        return Response(
+            content=f"Invalid URL: {str(e)}",
+            status_code=400,
+            media_type="text/plain"
+        )
+    
+    try:
+        # Scarica l'immagine dal server esterno
+        logger.debug(f"Proxying image from: {image_url}")
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            image_response = await client.get(image_url)
+            image_response.raise_for_status()  # Solleva eccezione se status non è 2xx
+        
+        # Determina il content type dall'header o dall'estensione
+        content_type = image_response.headers.get("content-type", "image/png")
+        if not content_type.startswith("image/"):
+            # Se il content-type non è un'immagine, prova a dedurlo dall'URL
+            ext = parsed_url.path.lower().split(".")[-1] if "." in parsed_url.path else ""
+            content_type_map = {
+                "jpg": "image/jpeg",
+                "jpeg": "image/jpeg",
+                "png": "image/png",
+                "gif": "image/gif",
+                "webp": "image/webp",
+                "svg": "image/svg+xml",
+            }
+            content_type = content_type_map.get(ext, "image/png")
+        
+        # Crea la risposta con l'immagine e header CORS
+        response = Response(
+            content=image_response.content,
+            status_code=200,
+            media_type=content_type
+        )
+        
+        # Aggiungi header CORS per permettere il caricamento cross-origin
+        origin = request.headers.get("origin")
+        allowed_origins = _split_env_list(os.getenv("MCP_ALLOWED_ORIGINS"))
+        
+        if not allowed_origins:
+            response.headers["Access-Control-Allow-Origin"] = "*"
+        elif origin and origin in allowed_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+        elif origin:
+            # Permetti l'origine se presente (utile per ChatGPT con origini dinamiche)
+            response.headers["Access-Control-Allow-Origin"] = origin
+        
+        # Header aggiuntivi per caching e sicurezza
+        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Cache-Control"] = "public, max-age=86400"  # Cache per 24 ore
+        
+        # Copia header utili dall'immagine originale (se presenti)
+        if "etag" in image_response.headers:
+            response.headers["ETag"] = image_response.headers["etag"]
+        if "last-modified" in image_response.headers:
+            response.headers["Last-Modified"] = image_response.headers["last-modified"]
+        
+        logger.debug(f"Successfully proxied image: {image_url} ({len(image_response.content)} bytes)")
+        return response
+        
+    except httpx.TimeoutException:
+        logger.error(f"Timeout while proxying image: {image_url}")
+        return Response(
+            content="Timeout while fetching image",
+            status_code=504,
+            media_type="text/plain"
+        )
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error while proxying image: {image_url}, status: {e.response.status_code}")
+        return Response(
+            content=f"Failed to fetch image: HTTP {e.response.status_code}",
+            status_code=e.response.status_code,
+            media_type="text/plain"
+        )
+    except Exception as e:
+        logger.error(f"Error proxying image: {image_url}, error: {str(e)}", exc_info=True)
+        return Response(
+            content=f"Error proxying image: {str(e)}",
+            status_code=500,
+            media_type="text/plain"
+        )
+
+
+# Handler per richieste OPTIONS (preflight) per il proxy
+async def proxy_image_options_handler(request: Request):
+    """Handler per richieste OPTIONS (preflight) per il proxy immagini."""
+    origin = request.headers.get("origin")
+    allowed_origins = _split_env_list(os.getenv("MCP_ALLOWED_ORIGINS"))
+    
+    response = Response(status_code=200)
+    
+    if not allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    elif origin and origin in allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    elif origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Max-Age"] = "86400"
+    
+    return response
 
 
 mcp = FastMCP(
@@ -418,41 +895,71 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
         )
 
     # Rewrite HTML to use correct paths for JS/CSS files
-    # The build generates HTML with paths like /electronics-carousel-2d2b.js
-    # We need to rewrite these to use /assets/ or the correct BASE_URL
+    # Handles multiple cases:
+    # - http://localhost:4444/file.js -> /assets/file.js or BASE_URL/assets/file.js
+    # - http://localhost:4444/assets/file.js -> /assets/file.js or BASE_URL/assets/file.js
+    # - /file.js -> /assets/file.js or BASE_URL/assets/file.js
     html_content = widget.html
     import re
     
-    # Get the base URL from environment (should be set on Render)
     base_url = os.getenv("BASE_URL", "").rstrip("/")
     
+    def fix_asset_path(match):
+        attr, path = match.group(1), match.group(2)
+        # Remove leading slash if present, ensure assets/ prefix
+        path = path.lstrip('/')
+        if not path.startswith('assets/'):
+            path = f'assets/{path}'
+        
+        if base_url:
+            return f'{attr}="{base_url}/{path}"'
+        else:
+            return f'{attr}="/{path}"'
+    
+    # Pattern 1: localhost URLs (with or without assets/)
+    html_content = re.sub(
+        r'(src|href)="http://localhost:\d+/([^"]+\.(js|css))"',
+        fix_asset_path,
+        html_content
+    )
+    
+    # Pattern 2: Absolute root paths
+    html_content = re.sub(
+        r'(src|href)="/([^"]+\.(js|css))"',
+        fix_asset_path,
+        html_content
+    )
+    
+    # Pattern 3: BASE_URL paths (if set)
     if base_url:
-        # Replace any localhost references with the actual BASE_URL
         html_content = re.sub(
-            r'(src|href)="http://localhost:\d+/([^"]+)"',
-            f'\\1="{base_url}/assets/\\2"',
+            rf'(src|href)="{re.escape(base_url)}/(?!assets/)([^"]+\.(js|css))"',
+            fix_asset_path,
             html_content
         )
-        # Replace absolute paths from root (like /electronics-carousel-2d2b.js) to BASE_URL/assets/
-        html_content = re.sub(
-            r'(src|href)="/([^/"]+\.(js|css))"',
-            f'\\1="{base_url}/assets/\\2"',
-            html_content
-        )
+
+    # Inject server base URL for proxy configuration
+    # This allows the frontend to know the server URL for proxy requests
+    # Use BASE_URL from environment if available, otherwise use empty string (relative URLs)
+    server_url = base_url or ""
+    
+    # Inject script to set server URL before closing </head> or before </body>
+    injection_script = f"""<script>
+    // Inject server base URL for image proxy configuration
+    if (typeof window !== 'undefined') {{
+      window.__ELECTRONICS_SERVER_URL__ = {repr(server_url)};
+      console.log('[Server] Injected server base URL:', window.__ELECTRONICS_SERVER_URL__);
+    }}
+    </script>"""
+    
+    # Try to inject before </head>, if not found inject before </body>
+    if "</head>" in html_content:
+        html_content = html_content.replace("</head>", injection_script + "\n</head>", 1)
+    elif "</body>" in html_content:
+        html_content = html_content.replace("</body>", injection_script + "\n</body>", 1)
     else:
-        # If no BASE_URL, use relative paths with /assets/ prefix
-        # This works for same-origin requests
-        html_content = re.sub(
-            r'(src|href)="http://localhost:\d+/([^"]+)"',
-            r'\1="/assets/\2"',
-            html_content
-        )
-        # Convert absolute root paths (like /electronics-carousel-2d2b.js) to /assets/ paths
-        html_content = re.sub(
-            r'(src|href)="/([^/"]+\.(js|css))"',
-            r'\1="/assets/\2"',
-            html_content
-        )
+        # If no head or body tag, prepend to HTML
+        html_content = injection_script + "\n" + html_content
 
     contents = [
         types.TextResourceContents(
@@ -508,7 +1015,17 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             logger.info(f"Tool {tool_name}: Fetching products from MotherDuck")
             products = await get_products_from_motherduck()
             product_count = len(products) if products else 0
-            logger.info(f"Tool {tool_name}: Retrieved {product_count} products from MotherDuck")
+            if product_count == 0:
+                # Se la lista è vuota, potrebbe essere dovuto a:
+                # 1. Errore precedente (pandas mancante, token mancante, ecc.) - già loggato come ERROR/WARNING
+                # 2. Database vuoto - comportamento normale
+                logger.warning(
+                    f"Tool {tool_name}: No products retrieved from MotherDuck. "
+                    "Widget will display empty products list. "
+                    "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
+                )
+            else:
+                logger.info(f"Tool {tool_name}: Retrieved {product_count} products from MotherDuck")
             
             result = types.ServerResult(
                 types.CallToolResult(
@@ -522,8 +1039,82 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     _meta=_tool_invocation_meta(widget),
                 )
             )
+        elif tool_name == "electronics-albums":
+            # Widget che usa formato 'albums' - recupera prodotti e trasforma in albums
+            logger.info(f"Tool {tool_name}: Fetching products from MotherDuck and transforming to albums")
+            products = await get_products_from_motherduck()
+            albums = transform_products_to_albums(products)
+            album_count = len(albums) if albums else 0
+            if album_count == 0:
+                # Se la lista è vuota, potrebbe essere dovuto a:
+                # 1. Errore precedente (pandas mancante, token mancante, ecc.) - già loggato come ERROR/WARNING
+                # 2. Database vuoto - comportamento normale
+                logger.warning(
+                    f"Tool {tool_name}: No products retrieved from MotherDuck. "
+                    "Widget will display empty albums list. "
+                    "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
+                )
+            else:
+                logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {album_count} albums")
+            
+            # Valida che non ci siano argomenti inattesi
+            if arguments:
+                logger.warning(
+                    f"Tool {tool_name}: Received unexpected arguments: {list(arguments.keys())}. "
+                    "Ignoring arguments as this tool does not require input."
+                )
+            
+            result = types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=widget.response_text,
+                        )
+                    ],
+                    structuredContent={"albums": albums},
+                    _meta=_tool_invocation_meta(widget),
+                )
+            )
+        elif tool_name in ["electronics-carousel", "electronics-map", "electronics-list", "mixed-auth-search"]:
+            # Widget che usano formato 'places' - recupera prodotti e trasforma in places
+            logger.info(f"Tool {tool_name}: Fetching products from MotherDuck and transforming to places")
+            products = await get_products_from_motherduck()
+            places = transform_products_to_places(products)
+            place_count = len(places) if places else 0
+            if place_count == 0:
+                # Se la lista è vuota, potrebbe essere dovuto a:
+                # 1. Errore precedente (pandas mancante, token mancante, ecc.) - già loggato come ERROR/WARNING
+                # 2. Database vuoto - comportamento normale
+                logger.warning(
+                    f"Tool {tool_name}: No products retrieved from MotherDuck. "
+                    "Widget will display empty places list. "
+                    "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
+                )
+            else:
+                logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {place_count} places")
+            
+            # Valida che non ci siano argomenti inattesi
+            if arguments:
+                logger.warning(
+                    f"Tool {tool_name}: Received unexpected arguments: {list(arguments.keys())}. "
+                    "Ignoring arguments as this tool does not require input."
+                )
+            
+            result = types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=widget.response_text,
+                        )
+                    ],
+                    structuredContent={"places": places},
+                    _meta=_tool_invocation_meta(widget),
+                )
+            )
         else:
-            # Widget di visualizzazione che non richiedono input
+            # Widget di visualizzazione che non richiedono input e non usano database
             # Valida che non ci siano argomenti inattesi
             if arguments:
                 logger.warning(
@@ -585,6 +1176,11 @@ mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resou
 # For Streamable HTTP transport, use streamable_http_app()
 app = mcp.sse_app()
 
+# Aggiungi middleware CORS all'app (deve essere prima di CSP)
+# Il middleware CORS permette il caricamento di risorse (JS, CSS) da origini diverse
+# necessario quando il widget viene caricato da ChatGPT che ha un'origine diversa
+app.add_middleware(CORSMiddleware)
+
 # Aggiungi middleware CSP all'app
 # Il middleware aggiunge Content Security Policy headers per prevenire attacchi XSS
 app.add_middleware(CSPMiddleware)
@@ -644,6 +1240,10 @@ async def root_handler(request):
     <div class="endpoint">
         <strong>GET /assets/*</strong> - Static files (HTML, JS, CSS) from the assets directory
     </div>
+    <div class="endpoint">
+        <strong>GET /proxy-image?url=...</strong> - Proxy per immagini esterne (risolve problema ORB/CORS). 
+        Accetta parametro <code>url</code> (URL-encoded) dell'immagine da proxyare.
+    </div>
     
     <h2>Available Widgets ({len(widgets)})</h2>
     <ul>
@@ -672,4 +1272,21 @@ else:
 # Add routes using Starlette's add_route (since sse_app() returns a Starlette app, not FastAPI)
 app.add_route("/", root_handler, methods=["GET"])
 app.add_route("/health", health_handler, methods=["GET"])
+app.add_route("/proxy-image", proxy_image_handler, methods=["GET"])
+app.add_route("/proxy-image", proxy_image_options_handler, methods=["OPTIONS"])
+
+
+if __name__ == "__main__":
+    """
+    Permette di eseguire il server direttamente con: python main.py
+    Per produzione, usa invece: uvicorn electronics_server_python.main:app --host 0.0.0.0 --port $PORT
+    """
+    port = int(os.getenv("PORT", "8000"))
+    host = os.getenv("HOST", "127.0.0.1")
+    
+    logger.info(f"Starting server on {host}:{port}")
+    logger.info(f"Access the server at http://{host}:{port}")
+    logger.info(f"MCP endpoint: http://{host}:{port}/mcp")
+    
+    uvicorn.run(app, host=host, port=port)
 

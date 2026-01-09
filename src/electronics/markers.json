@@ -1,6 +1,16 @@
 {
   "places": [
     {
+      "id": "Pikachu",
+      "name": "Pikachu",
+      "coords": [-122.4098, 37.8001],
+      "description": "a fantastic creature named Pikachu",
+      "city": "Biancavilla",
+      "rating": 5.0,
+      "price": "$$$",
+      "thumbnail": "https://occ-0-8407-90.1.nflxso.net/dnm/api/v6/6AYY37jfdO6hpXcMjf9Yu5cnmO0/AAAABdUHPu2AmsdSwALVHPueZYcsNPLb_ULHcKprf8oHIA3LZhB4MyCIbygPM_Lb3qZGtMTCo0LxB25YuEhgnv-zumVhHpeLOywhF4SL.jpg?r=db8"
+    },
+    {
       "id": "nova-slice-lab",
       "name": "Nova Slice Lab",
       "coords": [-122.4098, 37.8001],
@@ -8,17 +18,17 @@
       "city": "North Beach",
       "rating": 4.8,
       "price": "$$$",
-      "thumbnail": "https://persistent.oaistatic.com/electronics/electronics-1.png"
+      "thumbnail": "https://persistent.oaistatic.com/pizzaz/pizzaz-1.png"
     },
     {
       "id": "midnight-marinara",
-      "name": "Midnight Marinara",
+      "name": "Midnight Marinara Pizza",
       "coords": [-122.4093, 37.7990],
       "description": "Focaccia‑style squares, late‑night favorite.",
       "city": "North Beach",
       "rating": 4.6,
       "price": "$",
-      "thumbnail": "https://persistent.oaistatic.com/electronics/electronics-2.png"
+      "thumbnail": "https://persistent.oaistatic.com/pizzaz/pizzaz-2.png"
     },
     {
       "id": "cinder-oven-co",
@@ -28,7 +38,7 @@
       "city": "Mission",
       "rating": 4.5,
       "price": "$$",
-      "thumbnail": "https://persistent.oaistatic.com/electronics/electronics-3.png"
+      "thumbnail": "https://persistent.oaistatic.com/pizzaz/pizzaz-3.png"
     },
     {
       "id": "neon-crust-works",
@@ -38,7 +48,7 @@
       "city": "Alamo Square",
       "rating": 4.5,
       "price": "$$",
-      "thumbnail": "https://persistent.oaistatic.com/electronics/electronics-6.png"
+      "thumbnail": "https://persistent.oaistatic.com/pizzaz/pizzaz-6.png"
     },
     {
       "id": "luna-pie-collective",
@@ -48,7 +58,7 @@
       "city": "North Beach",
       "rating": 4.6,
       "price": "$$",
-      "thumbnail": "https://persistent.oaistatic.com/electronics/electronics-4.png"
+      "thumbnail": "https://persistent.oaistatic.com/pizzaz/pizzaz-4.png"
     },
     {
       "id": "bricklight-deep-dish",
@@ -58,7 +68,7 @@
       "city": "North Beach",
       "rating": 4.4,
       "price": "$$$",
-      "thumbnail": "https://persistent.oaistatic.com/electronics/electronics-5.png"
+      "thumbnail": "https://persistent.oaistatic.com/pizzaz/pizzaz-5.png"
     },
     {
       "id": "garden-ember-pies",
@@ -68,7 +78,7 @@
       "city": "Lower Haight",
       "rating": 4.4,
       "price": "$$",
-      "thumbnail": "https://persistent.oaistatic.com/electronics/electronics-1.png"
+      "thumbnail": "https://persistent.oaistatic.com/pizzaz/pizzaz-1.png"
     },
     {
       "id": "atlas-fire-pizzeria",
@@ -78,7 +88,7 @@
       "city": "Nob Hill",
       "rating": 4.6,
       "price": "$$$",
-      "thumbnail": "https://persistent.oaistatic.com/electronics/electronics-2.png"
+      "thumbnail": "https://persistent.oaistatic.com/pizzaz/pizzaz-2.png"
     },
     {
       "id": "circuit-slice-garage",
@@ -88,7 +98,7 @@
       "city": "SoMa",
       "rating": 4.5,
       "price": "$$",
-      "thumbnail": "https://persistent.oaistatic.com/electronics/electronics-3.png"
+      "thumbnail": "https://persistent.oaistatic.com/pizzaz/pizzaz-3.png"
     },
     {
       "id": "velvet-mozza-lounge",
@@ -98,7 +108,7 @@
       "city": "Yerba Buena",
       "rating": 4.3,
       "price": "$$",
-      "thumbnail": "https://persistent.oaistatic.com/electronics/electronics-6.png"
+      "thumbnail": "https://persistent.oaistatic.com/pizzaz/pizzaz-6.png"
     }
   ]
 }

@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { createRoot } from "react-dom/client";
-import markers from "./markers.json";
 import { AnimatePresence } from "framer-motion";
 import Inspector from "./Inspector";
 import Sidebar from "./Sidebar";
@@ -39,7 +38,9 @@ function App() {
   const mapRef = useRef(null);
   const mapObj = useRef(null);
   const markerObjs = useRef([]);
-  const places = markers?.places || [];
+  // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
+  const toolOutput = useOpenAiGlobal("toolOutput");
+  const places = toolOutput?.places || [];
   const markerCoords = places.map((p) => p.coords);
   const navigate = useNavigate();
   const location = useLocation();
