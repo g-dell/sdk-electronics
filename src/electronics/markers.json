@@ -1,6 +1,16 @@
 {
   "places": [
     {
+      "id": "avatar-way-of-water",
+      "name": "Avatar: The Way of Water",
+      "coords": [-122.4098, 37.8001],
+      "description": "Movie poster for Avatar: The Way of Water",
+      "city": "San Francisco",
+      "rating": 5.0,
+      "price": "$$$",
+      "thumbnail": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-PwxAB9kA1Mr7h3CvPJi2N8kA/user-fVH2JKxLBm3gfAaTzFDinZ9V/img-Ywf9b6rLPQ5YM0rZh2NQEkp8.png"
+    },
+    {
       "id": "nova-slice-lab",
       "name": "Nova Slice Lab",
       "coords": [-122.4098, 37.8001],
