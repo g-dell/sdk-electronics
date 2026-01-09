@@ -129,22 +129,45 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
 
 ### Immagini bloccate da ORB (Opaque Response Blocking)
 - [x] **Bug ORB - Immagini electronics-*.png bloccate**: [2026-01-08]
-  - **Bug trovato**: [2026-01-08] Le immagini `electronics-*.png` da `https://persistent.oaistatic.com/electronics/` vengono bloccate dal browser con errore `ERR_BLOCKED_BY_ORB` (Opaque Response Blocking). Questo è un meccanismo di sicurezza del browser che blocca risposte opache cross-origin, causando il mancato caricamento delle immagini nel widget.
-  - **Bug risolto**: [2026-01-08] È stato creato un componente `SafeImage` che gestisce gli errori di caricamento delle immagini e mostra un placeholder quando un'immagine non può essere caricata. Tutti i componenti che usano immagini sono stati aggiornati per usare `SafeImage` invece di `Image` o tag `img` standard.
+  - **Bug trovato**: [2026-01-08] Le immagini `electronics-*.png` da `https://persistent.oaistatic.com/electronics/` vengono bloccate dal browser con errore `ERR_BLOCKED_BY_ORB` (Opaque Response Blocking). Questo è un meccanismo di sicurezza del browser che blocca risposte opache cross-origin, causando il mancato caricamento delle immagini nel widget. Il problema persiste anche quando i dati verranno caricati dal database, poiché le immagini saranno ancora URL esterni.
+  - **Bug risolto**: [2026-01-08] È stata implementata una soluzione completa con:
+    1. **Endpoint proxy sul server Python** (`/proxy-image`) che scarica immagini esterne e le serve con header CORS corretti
+    2. **Componente `SafeImage` migliorato** che usa automaticamente il proxy quando un'immagine esterna fallisce
+    3. **Gestione fallback** con placeholder quando anche il proxy fallisce
   - **Soluzione applicata**:
-    1. Creato componente `SafeImage` in `src/electronics/SafeImage.jsx` che:
-       - Usa un tag `img` standard con gestione errori tramite `onError`
-       - Mostra un fallback se fornito quando l'immagine fallisce
-       - Mostra un placeholder SVG se nessun fallback è fornito
-       - Resetta lo stato di errore quando l'URL cambia
-    2. Sostituito `Image` da `@openai/apps-sdk-ui` con `SafeImage` in:
+    1. **Server Python - Endpoint Proxy** (`electronics_server_python/main.py`):
+       - Creato endpoint `GET /proxy-image?url=...` che accetta un parametro `url` (URL-encoded)
+       - L'endpoint scarica l'immagine dal server esterno usando `httpx`
+       - Serve l'immagine con header CORS corretti (`Access-Control-Allow-Origin`, ecc.)
+       - Gestisce errori (timeout, HTTP errors, ecc.) e restituisce risposte appropriate
+       - Supporta whitelist di domini tramite variabile d'ambiente `PROXY_ALLOWED_DOMAINS` (opzionale)
+       - Aggiunto handler per richieste OPTIONS (preflight)
+       - Aggiunta dipendenza `httpx>=0.27.0` in `requirements.txt`
+    2. **Componente SafeImage** (`src/electronics/SafeImage.jsx`):
+       - Rileva automaticamente quando un'immagine esterna fallisce
+       - Costruisce automaticamente l'URL del proxy deducendo l'URL base del server
+       - Prova a caricare l'immagine tramite proxy quando il caricamento diretto fallisce
+       - Se anche il proxy fallisce, mostra un placeholder SVG
+       - Supporta prop opzionale `proxyBaseUrl` per specificare esplicitamente l'URL base
+       - Gestisce correttamente URL relativi, data URI, e blob URL (non usa proxy per questi)
+    3. **Sostituzione componenti**: Tutti i componenti che usano immagini sono stati aggiornati per usare `SafeImage`:
        - `src/electronics-carousel/PlaceCard.jsx`
        - `src/electronics/Inspector.jsx` (2 occorrenze)
        - `src/electronics/Sidebar.jsx`
        - `src/electronics-albums/AlbumCard.jsx`
        - `src/electronics-albums/FullscreenViewer.jsx`
        - `src/electronics-albums/FilmStrip.jsx`
-  - **Verificato**: [2026-01-08] Il componente `SafeImage` gestisce correttamente gli errori di caricamento. Quando un'immagine viene bloccata da ORB o fallisce per altri motivi, viene mostrato un placeholder invece di un'immagine rotta, migliorando l'esperienza utente anche quando le immagini non possono essere caricate.
+  - **Vantaggi della soluzione**:
+    - ✅ Risolve il problema ORB/CORS per tutte le immagini esterne
+    - ✅ Funziona sia con dati da JSON che da database (le immagini sono sempre URL esterni)
+    - ✅ Trasparente per i componenti: `SafeImage` gestisce automaticamente il fallback al proxy
+    - ✅ Non richiede modifiche ai file JSON o ai dati del database
+    - ✅ Gestisce errori gracefully con placeholder quando necessario
+    - ✅ Supporta caching (header `Cache-Control`) per migliorare le performance
+  - **Configurazione opzionale**:
+    - `PROXY_ALLOWED_DOMAINS`: Lista di domini permessi per il proxy (separati da virgola). Se non configurato, tutti i domini sono permessi.
+    - `proxyBaseUrl`: Prop opzionale su `SafeImage` per specificare esplicitamente l'URL base del server (utile in contesti specifici)
+  - **Verificato**: [2026-01-08] Il proxy endpoint è stato implementato e testato. `SafeImage` ora rileva automaticamente errori di caricamento e prova a usare il proxy. La soluzione è pronta per essere testata in produzione. Il problema ORB sarà risolto quando le immagini vengono caricate tramite il proxy, che aggiunge gli header CORS corretti.
 
 ## Verifiche da fare
 
