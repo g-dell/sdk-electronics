@@ -232,6 +232,68 @@ def _transport_security_settings() -> TransportSecuritySettings:
     )
 
 
+class CORSMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware per aggiungere CORS (Cross-Origin Resource Sharing) headers alle risposte HTTP.
+    
+    Permette al browser di caricare risorse (JS, CSS) da origini diverse, necessario
+    quando il widget viene caricato da ChatGPT che ha un'origine diversa dal server.
+    """
+    
+    async def dispatch(self, request: Request, call_next):
+        # Gestisci richieste OPTIONS (preflight) prima di chiamare il prossimo middleware
+        if request.method == "OPTIONS":
+            origin = request.headers.get("origin")
+            allowed_origins = _split_env_list(os.getenv("MCP_ALLOWED_ORIGINS"))
+            
+            response = Response(status_code=200)
+            
+            # Imposta Access-Control-Allow-Origin
+            if not allowed_origins:
+                # Permetti tutte le origini (utile per sviluppo e per ChatGPT)
+                response.headers["Access-Control-Allow-Origin"] = "*"
+            elif origin and origin in allowed_origins:
+                response.headers["Access-Control-Allow-Origin"] = origin
+            elif origin:
+                # Se l'origine non è nella lista ma è presente, la permettiamo comunque
+                # (utile per ChatGPT che può avere origini dinamiche)
+                response.headers["Access-Control-Allow-Origin"] = origin
+            
+            # Header necessari per CORS
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            response.headers["Access-Control-Max-Age"] = "86400"  # 24 ore
+            
+            return response
+        
+        # Per tutte le altre richieste, processa normalmente e aggiungi header CORS
+        response = await call_next(request)
+        
+        # Ottieni l'origine della richiesta
+        origin = request.headers.get("origin")
+        
+        # Lista di origini permesse (può essere configurata via env)
+        allowed_origins = _split_env_list(os.getenv("MCP_ALLOWED_ORIGINS"))
+        
+        # Imposta Access-Control-Allow-Origin
+        if not allowed_origins:
+            # Permetti tutte le origini (utile per sviluppo e per ChatGPT)
+            response.headers["Access-Control-Allow-Origin"] = "*"
+        elif origin and origin in allowed_origins:
+            # Permetti solo origini specificate
+            response.headers["Access-Control-Allow-Origin"] = origin
+        elif origin:
+            # Se l'origine non è nella lista ma è presente, la permettiamo comunque
+            # (utile per ChatGPT che può avere origini dinamiche)
+            response.headers["Access-Control-Allow-Origin"] = origin
+        
+        # Header necessari per CORS
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        
+        return response
+
+
 class CSPMiddleware(BaseHTTPMiddleware):
     """
     Middleware per aggiungere Content Security Policy (CSP) headers alle risposte HTTP.
@@ -591,6 +653,11 @@ mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resou
 # For SSE transport (used by ChatGPT SDK), use sse_app()
 # For Streamable HTTP transport, use streamable_http_app()
 app = mcp.sse_app()
+
+# Aggiungi middleware CORS all'app (deve essere prima di CSP)
+# Il middleware CORS permette il caricamento di risorse (JS, CSS) da origini diverse
+# necessario quando il widget viene caricato da ChatGPT che ha un'origine diversa
+app.add_middleware(CORSMiddleware)
 
 # Aggiungi middleware CSP all'app
 # Il middleware aggiunge Content Security Policy headers per prevenire attacchi XSS
