@@ -83,6 +83,12 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
   - **Sezione correlata**: `electronics_server_python/requirements.txt`, `electronics_server_python/main.py` (riga 21)
   - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
 
+### pandas mancante nei requirements.txt
+- [x] **Bug Requirements - pandas non dichiarato**: [2026-01-09] DuckDB richiede `pandas` per il metodo `fetchdf()` che converte i risultati delle query SQL in DataFrame pandas. Tuttavia, `pandas` non era presente nel file `requirements.txt`, causando `Invalid Input Error: 'pandas' is required for this operation but it was not installed` quando il server tentava di recuperare prodotti da MotherDuck.
+  - **Come si manifesta**: Errori nei log quando si chiama `con.execute(query).fetchdf()` in `get_products_from_motherduck()`: `Invalid Input Error: 'pandas' is required for this operation but it was not installed`. Il server non può recuperare prodotti da MotherDuck.
+  - **Sezione correlata**: `electronics_server_python/requirements.txt`, `electronics_server_python/main.py` (riga 142)
+  - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
+
 ## Bug risolti
 
 ### CORS Error - UI non si carica
@@ -231,17 +237,80 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
   - **Errore nei log**: `ModuleNotFoundError: No module named 'numpy'` quando si chiama `con.execute(query).fetchdf()` in `get_products_from_motherduck()`
   - **Verificato**: [2026-01-09] La dipendenza `numpy>=1.24.0` è ora presente in `requirements.txt`. Il server dovrebbe ora essere in grado di recuperare prodotti da MotherDuck senza errori di import.
 
+### pandas mancante nei requirements.txt
+- [x] **Bug Requirements - pandas non dichiarato**: [2026-01-09]
+  - **Bug trovato**: [2026-01-09] DuckDB richiede `pandas` per il metodo `fetchdf()` che converte i risultati delle query SQL in DataFrame pandas. Tuttavia, `pandas` non era presente nel file `requirements.txt`, causando `Invalid Input Error: 'pandas' is required for this operation but it was not installed` quando il server tentava di recuperare prodotti da MotherDuck.
+  - **Come si manifesta**: 
+    - **Errore nei log del server**: `Invalid Input Error: 'pandas' is required for this operation but it was not installed`
+    - **Location**: `electronics_server_python/main.py` riga 142: `products_df = con.execute(query).fetchdf()`
+    - **Funzione**: `get_products_from_motherduck()` nella funzione `get_products_from_motherduck()`
+    - **Impatto**: Il server non può recuperare prodotti da MotherDuck, causando liste vuote nei widget quando vengono chiamati i tool (electronics-carousel, electronics-map, electronics-list, electronics-albums, mixed-auth-search)
+    - **Stack trace completo**: 
+      ```
+      2026-01-09 15:45:41 - electronics_server_python.main - ERROR - Error retrieving products from MotherDuck: Invalid Input Error: 'pandas' is required for this operation but it was not installed
+      Traceback (most recent call last):
+        File "/opt/render/project/src/electronics_server_python/main.py", line 137, in get_products_from_motherduck
+          with get_motherduck_connection() as con:
+        File "/opt/render/project/src/electronics_server_python/main.py", line 142, in get_products_from_motherduck
+          products_df = con.execute(query).fetchdf()
+      _duckdb.InvalidInputException: Invalid Input Error: 'pandas' is required for this operation but it was not installed
+      ```
+  - **Bug risolto**: [2026-01-09] Aggiunto `pandas>=2.0.0` al file `requirements.txt`. DuckDB usa pandas per convertire risultati query in DataFrame, che vengono poi trasformati in dizionari Python per compatibilità JSON.
+  - **Soluzione applicata**:
+    1. Aggiunta riga `pandas>=2.0.0  # Richiesto da DuckDB per fetchdf() (conversione risultati in DataFrame)` a `electronics_server_python/requirements.txt`
+    2. La dipendenza viene installata automaticamente durante `pip install -r requirements.txt` o durante il deploy su Render
+  - **Nota tecnica**: 
+    - Sia `numpy` che `pandas` sono richiesti da DuckDB per `fetchdf()`. 
+    - `numpy>=1.24.0` gestisce le operazioni sui DataFrame
+    - `pandas>=2.0.0` fornisce il formato DataFrame stesso
+    - Dopo `fetchdf()`, il DataFrame viene convertito in lista di dizionari con `products_df.to_dict(orient="records")` alla riga 145
+  - **Verificato**: [2026-01-09] La dipendenza `pandas>=2.0.0` è ora presente in `requirements.txt`. **IMPORTANTE**: Dopo il prossimo deploy su Render con `pandas` aggiunto, questo errore non dovrebbe più verificarsi e il server potrà recuperare correttamente i prodotti da MotherDuck.
+  - **Azioni post-deploy**: Verificare che i log non mostrino più questo errore e che i widget ricevano correttamente i prodotti da MotherDuck.
+
+### Warning "No products retrieved from MotherDuck" dopo errori
+- [x] **Bug Logging - Warning ridondante dopo errori**: [2026-01-09]
+  - **Bug trovato**: [2026-01-09] Quando si verifica un errore nel recupero prodotti da MotherDuck (es. pandas mancante), il sistema logga prima un ERROR con il dettaglio dell'errore, poi quando la lista vuota viene processata, viene generato un WARNING aggiuntivo che dice "No products retrieved from MotherDuck. Widget will display empty places list." Questo warning è ridondante e può confondere perché non indica chiaramente che la causa è l'errore precedente.
+  - **Bug risolto**: [2026-01-09] Migliorati i messaggi di warning per includere un suggerimento a controllare i log precedenti per errori. Questo aiuta a distinguere tra:
+    - Lista vuota dovuta a un errore (pandas, token, connessione) → controllare ERROR precedenti
+    - Lista vuota perché il database è effettivamente vuoto → comportamento normale
+  - **Soluzione applicata**:
+    1. Modificati i warning in `_call_tool_request` per tool `product-list`, `electronics-albums`, e widget `places` (electronics-carousel, electronics-map, electronics-list, mixed-auth-search)
+    2. Aggiunto messaggio esplicativo: "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
+  - **File modificati**: `electronics_server_python/main.py` (righe ~987, ~1015, ~1047)
+  - **Errore nei log**: Quando c'è un errore (es. pandas mancante), si vede:
+    ```
+    ERROR - Error retrieving products from MotherDuck: Invalid Input Error: 'pandas' is required...
+    WARNING - Tool electronics-carousel: No products retrieved from MotherDuck. Widget will display empty places list.
+    ```
+  - **Verificato**: [2026-01-09] I warning ora sono più informativi e aiutano a identificare quando una lista vuota è causata da un errore di configurazione piuttosto che da un database vuoto. Il messaggio ora include un suggerimento a controllare i log precedenti per errori specifici.
+
+### Warning "No products retrieved from MotherDuck" dopo errori
+- [x] **Bug Logging - Warning ridondante dopo errori**: [2026-01-09]
+  - **Bug trovato**: [2026-01-09] Quando si verifica un errore nel recupero prodotti da MotherDuck (es. pandas mancante), il sistema logga prima un ERROR con il dettaglio dell'errore, poi quando la lista vuota viene processata, viene generato un WARNING aggiuntivo che dice "No products retrieved from MotherDuck. Widget will display empty places list." Questo warning è ridondante e può confondere perché non indica chiaramente che la causa è l'errore precedente.
+  - **Bug risolto**: [2026-01-09] Migliorati i messaggi di warning per includere un suggerimento a controllare i log precedenti per errori. Questo aiuta a distinguere tra lista vuota dovuta a un errore (pandas, token, connessione) e lista vuota perché il database è effettivamente vuoto.
+  - **Soluzione applicata**:
+    1. Modificati i warning in `_call_tool_request` per tool `product-list`, `electronics-albums`, e widget `places` (electronics-carousel, electronics-map, electronics-list, mixed-auth-search)
+    2. Aggiunto messaggio esplicativo: "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
+  - **File modificati**: `electronics_server_python/main.py` (righe ~987, ~1015, ~1047)
+  - **Errore nei log**: Quando c'è un errore (es. pandas mancante), si vede:
+    ```
+    ERROR - Error retrieving products from MotherDuck: Invalid Input Error: 'pandas' is required...
+    WARNING - Tool electronics-carousel: No products retrieved from MotherDuck. Widget will display empty places list.
+    ```
+  - **Verificato**: [2026-01-09] I warning ora sono più informativi e aiutano a identificare quando una lista vuota è causata da un errore di configurazione piuttosto che da un database vuoto.
+
 ### AssertionError nel middleware Starlette con risposte SSE
-- [x] **Bug Middleware - AssertionError con risposte SSE**: [2026-01-09]
+- [ ] **Bug Middleware - AssertionError con risposte SSE**: [2026-01-09]
   - **Bug trovato**: [2026-01-09] Quando il server gestisce richieste SSE (Server-Sent Events) per l'endpoint `/mcp`, i middleware `CORSMiddleware` e `CSPMiddleware` tentano di processare le risposte come normali risposte HTTP. Tuttavia, le risposte SSE hanno un formato diverso (streaming continuo) e non seguono il normale flusso request/response HTTP, causando `AssertionError: Unexpected message: {'type': 'http.response.start', ...}` nel middleware Starlette.
-  - **Bug risolto**: [2026-01-09] Modificati i middleware per escludere le route SSE (`/mcp` e `/sse`) dalla processazione. Le risposte SSE vengono ora passate direttamente senza modificare gli header, poiché sono gestite direttamente da `sse-starlette`.
+  - **Tentativo di risoluzione**: [2026-01-09] Modificati i middleware per escludere le route SSE (`/mcp` e `/sse`) dalla processazione. Tuttavia, l'errore persiste, suggerendo che il problema potrebbe essere più complesso o che ci siano altre route che causano problemi.
   - **Soluzione applicata**:
     1. Aggiunto controllo nelle funzioni `dispatch()` di `CORSMiddleware` e `CSPMiddleware` per escludere route che iniziano con `/mcp` o `/sse`
     2. Per queste route, le risposte vengono passate direttamente a `call_next()` senza modifiche agli header
     3. Le altre route continuano a ricevere header CORS e CSP normalmente
-  - **Errore nei log**: `AssertionError: Unexpected message: {'type': 'http.response.start', 'status': 200, 'headers': [(b'content-length', b'0')]}` quando si processano richieste a `/mcp` o `/messages/`
-  - **Nota tecnica**: Le risposte SSE usano un protocollo di streaming diverso dalle normali risposte HTTP. Il middleware Starlette si aspetta messaggi di tipo `http.response.body` ma le risposte SSE inviano `http.response.start` che non viene gestito correttamente dal middleware.
-  - **Verificato**: [2026-01-09] I middleware ora escludono correttamente le route SSE. Le richieste a `/mcp` e `/sse` vengono processate direttamente senza passare attraverso la logica di modifica header, evitando l'errore AssertionError.
+  - **Errore nei log**: `AssertionError: Unexpected message: {'type': 'http.response.start', 'status': 200, 'headers': [(b'content-length', b'0')]}` quando si processano richieste a `/mcp`, `/messages/`, o asset statici.
+  - **Nota tecnica**: Le risposte SSE usano un protocollo di streaming diverso dalle normali risposte HTTP. Il middleware Starlette si aspetta messaggi di tipo `http.response.body` ma le risposte SSE inviano `http.response.start` che non viene gestito correttamente dal middleware. L'errore può verificarsi anche con asset statici se hanno un formato di risposta particolare.
+  - **Stato**: ⚠️ **Parzialmente risolto** - Il controllo per `/mcp` e `/sse` è stato aggiunto ma l'errore persiste in alcuni casi. Potrebbe essere necessario un approccio diverso, come rimuovere completamente i middleware dalle route problematiche o usare un middleware personalizzato che gestisca correttamente le risposte streaming.
+  - **Prossimi passi**: Investigare se ci sono altre route che causano problemi o se serve un approccio diverso per gestire le risposte streaming nel middleware.
 
 ### POST /sse restituisce 405 Method Not Allowed
 - [ ] **Bug SSE - POST non supportato su /sse**: [2026-01-09] Nei log di produzione si vede `POST /sse HTTP/1.1" 405 Method Not Allowed`. L'endpoint `/sse` accetta solo GET per le richieste SSE, ma qualcuno sta tentando di fare POST. Questo non è critico (il GET funziona correttamente), ma indica che potrebbe esserci confusione su quale endpoint usare.

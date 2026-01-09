@@ -171,10 +171,21 @@ def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[st
     I widget carousel/map/list/albums si aspettano una struttura 'places' con:
     - id, name, coords (lat, lon), description, city, rating, price (stringa), thumbnail
     
-    I prodotti dal database hanno:
-    - id, name, price (number), description, image, tags, highlights
+    I prodotti dal database prodotti_xeel_shop hanno:
+    - id, name, prices.amountMax/prices.amountMin, descrizione_prodotto, imageURLs, 
+      voto_prodotto_1_5, categories, primaryCategories
     
-    Questa funzione mappa i campi e genera valori default per campi mancanti (coords, city, rating).
+    Questa funzione mappa i campi dal database e genera valori default per campi mancanti 
+    (coords, city - generati automaticamente).
+    
+    Mapping colonne DB -> places:
+    - id -> id
+    - name -> name  
+    - prices.amountMax -> price (convertito in $/$$/$$$)
+    - descrizione_prodotto -> description
+    - imageURLs -> thumbnail
+    - voto_prodotto_1_5 -> rating (con fallback a 4.5)
+    - coords, city -> generati automaticamente (default San Francisco)
     
     Args:
         products: Lista di prodotti dal database (dizionari Python)
@@ -216,9 +227,16 @@ def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[st
     
     places = []
     for idx, product in enumerate(products):
-        # Ottieni il prezzo e convertilo in formato stringa ($, $$, $$$)
-        price_num = product.get("price") or product.get("prices", {}).get("amountMax", 0)
-        if isinstance(price_num, (int, float)):
+        # Ottieni il prezzo da prices.amountMax (colonna nel DB con dot notation)
+        # DuckDB restituisce le colonne con dot come chiavi con dot o come dict annidato
+        price_num = 0
+        if "prices.amountMax" in product:
+            price_num = product.get("prices.amountMax", 0)
+        elif isinstance(product.get("prices"), dict):
+            price_num = product.get("prices", {}).get("amountMax", 0)
+        
+        # Converti prezzo in formato stringa ($, $$, $$$)
+        if isinstance(price_num, (int, float)) and price_num > 0:
             if price_num < 50:
                 price_str = "$"
             elif price_num < 100:
@@ -234,19 +252,21 @@ def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[st
         # Genera città usando pattern circolare
         city = default_cities[idx % len(default_cities)]
         
-        # Rating default (o calcolato se disponibile nel database)
-        rating = 4.5  # Rating di default, potrebbe essere calcolato da recensioni se disponibili
+        # Rating dal database (voto_prodotto_1_5) o default
+        rating = product.get("voto_prodotto_1_5", 4.5)
+        if not isinstance(rating, (int, float)) or rating <= 0:
+            rating = 4.5  # Default se non valido
         
-        # Mappa i campi
+        # Mappa i campi usando i nomi colonne corretti del database
         place = {
             "id": product.get("id", f"product-{idx}"),
             "name": product.get("name", "Unknown Product"),
             "coords": coords,
-            "description": product.get("description") or product.get("shortDescription", ""),
+            "description": product.get("descrizione_prodotto", ""),  # Usa descrizione_prodotto dal DB
             "city": city,
             "rating": rating,
             "price": price_str,
-            "thumbnail": product.get("image") or product.get("imageURLs", ""),  # Mappa image/imageURLs -> thumbnail
+            "thumbnail": product.get("imageURLs", ""),  # Usa solo imageURLs (non esiste "image" nel DB)
         }
         
         # Assicurati che thumbnail sia una stringa (se imageURLs è una lista, prendi il primo)
@@ -269,8 +289,11 @@ def transform_products_to_albums(products: List[Dict[str, Any]]) -> List[Dict[st
       - id, title, cover
       - photos array con id, title, url
     
-    Strategia: Raggruppa prodotti per categoria/tag o crea album tematici.
-    Per semplicità, crea album basati sui tag più comuni dei prodotti.
+    Strategia: Raggruppa prodotti per categoria (primaryCategories o categories).
+    I prodotti dal database prodotti_xeel_shop hanno:
+    - primaryCategories (colonna preferita) o categories (fallback)
+    - imageURLs per le immagini
+    - name per il titolo
     
     Args:
         products: Lista di prodotti dal database (dizionari Python)
@@ -286,12 +309,21 @@ def transform_products_to_albums(products: List[Dict[str, Any]]) -> List[Dict[st
     albums_map = {}
     
     for product in products:
-        tags = product.get("tags", []) or []
-        if isinstance(tags, str):
-            tags = [tag.strip() for tag in tags.split(",")]
+        # Usa primaryCategories o categories dal database (non esiste "tags")
+        categories = []
+        if product.get("primaryCategories"):
+            if isinstance(product["primaryCategories"], list):
+                categories = product["primaryCategories"]
+            elif isinstance(product["primaryCategories"], str):
+                categories = [cat.strip() for cat in product["primaryCategories"].split(",")]
+        elif product.get("categories"):
+            if isinstance(product["categories"], list):
+                categories = product["categories"]
+            elif isinstance(product["categories"], str):
+                categories = [cat.strip() for cat in product["categories"].split(",")]
         
-        # Usa il primo tag come categoria, o "General" se non ci sono tag
-        category = tags[0] if tags else "General Electronics"
+        # Usa la prima categoria come categoria principale, o "General" se non ci sono
+        category = categories[0] if categories else "General Electronics"
         
         # Normalizza il nome della categoria per l'id dell'album
         album_id = category.lower().replace(" ", "-").replace("&", "and")[:30]
@@ -300,7 +332,7 @@ def transform_products_to_albums(products: List[Dict[str, Any]]) -> List[Dict[st
             albums_map[album_id] = {
                 "id": album_id,
                 "title": category,
-                "cover": product.get("image") or product.get("imageURLs", "") or "",
+                "cover": product.get("imageURLs", "") or "",  # Usa solo imageURLs (non esiste "image" nel DB)
                 "photos": [],
             }
             
@@ -312,7 +344,7 @@ def transform_products_to_albums(products: List[Dict[str, Any]]) -> List[Dict[st
         photo = {
             "id": product.get("id", f"photo-{len(albums_map[album_id]['photos'])}"),
             "title": product.get("name", "Product"),
-            "url": product.get("image") or product.get("imageURLs", "") or "",
+            "url": product.get("imageURLs", "") or "",  # Usa solo imageURLs (non esiste "image" nel DB)
         }
         
         # Assicurati che url sia una stringa
@@ -984,10 +1016,13 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             products = await get_products_from_motherduck()
             product_count = len(products) if products else 0
             if product_count == 0:
+                # Se la lista è vuota, potrebbe essere dovuto a:
+                # 1. Errore precedente (pandas mancante, token mancante, ecc.) - già loggato come ERROR/WARNING
+                # 2. Database vuoto - comportamento normale
                 logger.warning(
                     f"Tool {tool_name}: No products retrieved from MotherDuck. "
-                    "This may be due to missing MOTHERDUCK_TOKEN or database connection issues. "
-                    "Widget will display empty products list."
+                    "Widget will display empty products list. "
+                    "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
                 )
             else:
                 logger.info(f"Tool {tool_name}: Retrieved {product_count} products from MotherDuck")
@@ -1011,9 +1046,13 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             albums = transform_products_to_albums(products)
             album_count = len(albums) if albums else 0
             if album_count == 0:
+                # Se la lista è vuota, potrebbe essere dovuto a:
+                # 1. Errore precedente (pandas mancante, token mancante, ecc.) - già loggato come ERROR/WARNING
+                # 2. Database vuoto - comportamento normale
                 logger.warning(
                     f"Tool {tool_name}: No products retrieved from MotherDuck. "
-                    "Widget will display empty albums list."
+                    "Widget will display empty albums list. "
+                    "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
                 )
             else:
                 logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {album_count} albums")
@@ -1044,9 +1083,13 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             places = transform_products_to_places(products)
             place_count = len(places) if places else 0
             if place_count == 0:
+                # Se la lista è vuota, potrebbe essere dovuto a:
+                # 1. Errore precedente (pandas mancante, token mancante, ecc.) - già loggato come ERROR/WARNING
+                # 2. Database vuoto - comportamento normale
                 logger.warning(
                     f"Tool {tool_name}: No products retrieved from MotherDuck. "
-                    "Widget will display empty places list."
+                    "Widget will display empty places list. "
+                    "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
                 )
             else:
                 logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {place_count} places")

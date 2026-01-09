@@ -151,6 +151,11 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
     - Il rating è un valore di default (4.5) e può essere calcolato in futuro se il database include recensioni
     - Gli albums sono raggruppati per categoria/tag principale del prodotto
     - **IMPORTANTE**: I widget ora richiedono che il server Python passi i dati tramite `toolOutput`. Se `toolOutput` è vuoto o assente, i widget mostreranno liste vuote.
+  - **Dipendenze Python richieste** (tutte dichiarate in `requirements.txt`):
+    - ✅ `duckdb>=0.10.0`: Connessione a MotherDuck
+    - ✅ `numpy>=1.24.0`: Richiesto da DuckDB per operazioni DataFrame
+    - ✅ `pandas>=2.0.0`: Richiesto da DuckDB per `fetchdf()` (conversione risultati query in DataFrame)
+    - ✅ `python-dotenv>=1.0.0`: Per caricare variabili d'ambiente da `.env`
   - **Prossimi passi opzionali**:
     - [ ] Aggiungere campi geografici reali nel database se disponibili (lat/lon, city)
     - [ ] Calcolare rating da recensioni se disponibili nel database
