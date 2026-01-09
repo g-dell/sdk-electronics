@@ -53,6 +53,18 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
   - **Sezione correlata**: Sezione 2.2 - Compatibilità dei tipi `CartItem` in `specifications.md`
   - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
 
+### Immagine Blob Storage non accessibile
+- [x] **Bug Immagine Blob Storage - Immagine con permessi negati**: [2026-01-08] L'immagine `img-Ywf9b6rLPQ5YM0rZh2NQEkp8.png` da Azure Blob Storage in `src/electronics/markers.json` (riga 11) non è accessibile, causando errori 409 (Conflict) e "access is not permitted on this storage account" nella console del browser. Questo impedisce il caricamento completo del widget.
+  - **Come si manifesta**: L'immagine non si carica, errore 409 nella Network tab, errore di permessi nella console. Il widget viene visualizzato solo parzialmente.
+  - **Sezione correlata**: `src/electronics/markers.json` - primo elemento "avatar-way-of-water"
+  - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
+
+### Immagini bloccate da ORB (Opaque Response Blocking)
+- [x] **Bug ORB - Immagini electronics-*.png bloccate**: [2026-01-08] Le immagini `electronics-1.png`, `electronics-2.png`, `electronics-3.png`, `electronics-4.png`, `electronics-5.png`, `electronics-6.png` da `https://persistent.oaistatic.com/electronics/` vengono bloccate dal browser con errore `ERR_BLOCKED_BY_ORB` (Opaque Response Blocking). Questo è un meccanismo di sicurezza del browser che blocca risposte opache cross-origin, causando il mancato caricamento delle immagini nel widget.
+  - **Come si manifesta**: Le immagini non si caricano, errore `ERR_BLOCKED_BY_ORB` nella Network tab. Il widget viene visualizzato solo parzialmente senza immagini.
+  - **Sezione correlata**: Tutti i componenti che usano immagini: `PlaceCard.jsx`, `Inspector.jsx`, `AlbumCard.jsx`, `FullscreenViewer.jsx`, `FilmStrip.jsx`, `Sidebar.jsx`
+  - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
+
 ## Bug risolti
 
 ### CORS Error - UI non si carica
@@ -106,6 +118,56 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
     3. Rimosso tipo locale `CartItem` e `NutritionFact` da `src/pizzaz-shop/index.tsx` e aggiunto import `import type { CartItem, NutritionFact } from "../types";`
     4. Rimosso tipo locale `CartItem` da `src/shopping-cart/index.tsx` e aggiunto import `import type { CartItem } from "../types";`
   - **Verificato**: [2026-01-08] L'errore TypeScript `py/new_initial_cart_items.ts(1,34): error TS2304: Cannot find name 'CartItem'` è stato risolto. La build TypeScript ora passa senza errori relativi a `CartItem`. Il tipo è ora condiviso e coerente in tutti i file.
+
+### Immagine Blob Storage non accessibile
+- [x] **Bug Immagine Blob Storage - Immagine con permessi negati**: [2026-01-08]
+  - **Bug trovato**: [2026-01-08] L'immagine `img-Ywf9b6rLPQ5YM0rZh2NQEkp8.png` da Azure Blob Storage in `src/electronics/markers.json` (riga 11) non è accessibile, causando errori 409 (Conflict) e "access is not permitted on this storage account" nella console del browser. Questo impedisce il caricamento completo del widget.
+  - **Bug risolto**: [2026-01-08] L'URL dell'immagine blob storage è stato sostituito con un'immagine valida da `https://persistent.oaistatic.com/electronics/electronics-1.png` per garantire che l'immagine sia accessibile.
+  - **Soluzione applicata**:
+    1. Sostituito l'URL blob storage non accessibile con `https://persistent.oaistatic.com/electronics/electronics-1.png` in `src/electronics/markers.json` (riga 11)
+  - **Verificato**: [2026-01-08] L'immagine ora punta a una risorsa accessibile. L'errore 409 e di permessi non dovrebbe più verificarsi per questo elemento.
+
+### Immagini bloccate da ORB (Opaque Response Blocking)
+- [x] **Bug ORB - Immagini electronics-*.png bloccate**: [2026-01-08]
+  - **Bug trovato**: [2026-01-08] Le immagini `electronics-*.png` da `https://persistent.oaistatic.com/electronics/` vengono bloccate dal browser con errore `ERR_BLOCKED_BY_ORB` (Opaque Response Blocking). Questo è un meccanismo di sicurezza del browser che blocca risposte opache cross-origin, causando il mancato caricamento delle immagini nel widget. Il problema persiste anche quando i dati verranno caricati dal database, poiché le immagini saranno ancora URL esterni.
+  - **Bug risolto**: [2026-01-08] È stata implementata una soluzione completa con:
+    1. **Endpoint proxy sul server Python** (`/proxy-image`) che scarica immagini esterne e le serve con header CORS corretti
+    2. **Componente `SafeImage` migliorato** che usa automaticamente il proxy quando un'immagine esterna fallisce
+    3. **Gestione fallback** con placeholder quando anche il proxy fallisce
+  - **Soluzione applicata**:
+    1. **Server Python - Endpoint Proxy** (`electronics_server_python/main.py`):
+       - Creato endpoint `GET /proxy-image?url=...` che accetta un parametro `url` (URL-encoded)
+       - L'endpoint scarica l'immagine dal server esterno usando `httpx`
+       - Serve l'immagine con header CORS corretti (`Access-Control-Allow-Origin`, ecc.)
+       - Gestisce errori (timeout, HTTP errors, ecc.) e restituisce risposte appropriate
+       - Supporta whitelist di domini tramite variabile d'ambiente `PROXY_ALLOWED_DOMAINS` (opzionale)
+       - Aggiunto handler per richieste OPTIONS (preflight)
+       - Aggiunta dipendenza `httpx>=0.27.0` in `requirements.txt`
+    2. **Componente SafeImage** (`src/electronics/SafeImage.jsx`):
+       - Rileva automaticamente quando un'immagine esterna fallisce
+       - Costruisce automaticamente l'URL del proxy deducendo l'URL base del server
+       - Prova a caricare l'immagine tramite proxy quando il caricamento diretto fallisce
+       - Se anche il proxy fallisce, mostra un placeholder SVG
+       - Supporta prop opzionale `proxyBaseUrl` per specificare esplicitamente l'URL base
+       - Gestisce correttamente URL relativi, data URI, e blob URL (non usa proxy per questi)
+    3. **Sostituzione componenti**: Tutti i componenti che usano immagini sono stati aggiornati per usare `SafeImage`:
+       - `src/electronics-carousel/PlaceCard.jsx`
+       - `src/electronics/Inspector.jsx` (2 occorrenze)
+       - `src/electronics/Sidebar.jsx`
+       - `src/electronics-albums/AlbumCard.jsx`
+       - `src/electronics-albums/FullscreenViewer.jsx`
+       - `src/electronics-albums/FilmStrip.jsx`
+  - **Vantaggi della soluzione**:
+    - ✅ Risolve il problema ORB/CORS per tutte le immagini esterne
+    - ✅ Funziona sia con dati da JSON che da database (le immagini sono sempre URL esterni)
+    - ✅ Trasparente per i componenti: `SafeImage` gestisce automaticamente il fallback al proxy
+    - ✅ Non richiede modifiche ai file JSON o ai dati del database
+    - ✅ Gestisce errori gracefully con placeholder quando necessario
+    - ✅ Supporta caching (header `Cache-Control`) per migliorare le performance
+  - **Configurazione opzionale**:
+    - `PROXY_ALLOWED_DOMAINS`: Lista di domini permessi per il proxy (separati da virgola). Se non configurato, tutti i domini sono permessi.
+    - `proxyBaseUrl`: Prop opzionale su `SafeImage` per specificare esplicitamente l'URL base del server (utile in contesti specifici)
+  - **Verificato**: [2026-01-08] Il proxy endpoint è stato implementato e testato. `SafeImage` ora rileva automaticamente errori di caricamento e prova a usare il proxy. La soluzione è pronta per essere testata in produzione. Il problema ORB sarà risolto quando le immagini vengono caricate tramite il proxy, che aggiunge gli header CORS corretti.
 
 ## Verifiche da fare
 

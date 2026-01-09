@@ -2,3 +2,4 @@ fastapi>=0.115.3  # Updated for security (fixes CVE-2024-12868, CVE-2025-0182)
 mcp>=0.1.0
 uvicorn>=0.30.0
 duckdb>=0.10.0  # Aggiunto per MotherDuck
+httpx>=0.27.0  # Per proxy immagini (risolve problema ORB)
