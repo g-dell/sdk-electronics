@@ -1,6 +1,7 @@
 import React from "react";
+import SafeImage from "../electronics/SafeImage";
 
-export default function FilmStrip({ album, selectedIndex, onSelect }) {
+export default function FilmStrip({ album, selectedIndex, onSelect, proxyBaseUrl }) {
   return (
     <div className="h-full w-full overflow-auto flex flex-col items-center justify-center p-5 space-y-5">
       {album.photos.map((photo, idx) => (
@@ -16,11 +17,11 @@ export default function FilmStrip({ album, selectedIndex, onSelect }) {
           }
         >
           <div className="aspect-[5/3] rounded-lg overflow-hidden w-full">
-            <img
+            <SafeImage
               src={photo.url}
               alt={photo.title || `Photo ${idx + 1}`}
               className="h-full w-full object-cover"
-              loading="lazy"
+              proxyBaseUrl={proxyBaseUrl}
             />
           </div>
         </button>

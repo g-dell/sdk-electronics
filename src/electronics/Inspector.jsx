@@ -2,9 +2,12 @@ import React from "react";
 import { motion } from "framer-motion";
 import { Star, X } from "lucide-react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
-import { Image } from "@openai/apps-sdk-ui/components/Image";
+import SafeImage from "./SafeImage";
+import { useProxyBaseUrl } from "../use-proxy-base-url";
 
 export default function Inspector({ place, onClose }) {
+  const proxyBaseUrl = useProxyBaseUrl();
+  
   if (!place) return null;
   return (
     <motion.div
@@ -28,10 +31,11 @@ export default function Inspector({ place, onClose }) {
       </Button>
       <div className="relative h-full overflow-y-auto rounded-none xl:rounded-3xl bg-white text-black xl:shadow-xl xl:ring ring-black/10">
         <div className="relative mt-2 xl:mt-0 px-2 xl:px-0">
-          <Image
+          <SafeImage
             src={place.thumbnail}
             alt={place.name}
             className="w-full rounded-3xl xl:rounded-none h-80 object-cover xl:rounded-t-2xl"
+            proxyBaseUrl={proxyBaseUrl}
           />
         </div>
 
@@ -86,10 +90,11 @@ export default function Inspector({ place, onClose }) {
               ].map((review, idx) => (
                 <li key={idx} className="py-3">
                   <div className="flex items-start gap-3">
-                    <Image
+                    <SafeImage
                       src={review.avatar}
                       alt={`${review.user} avatar`}
                       className="h-8 w-8 ring ring-black/5 rounded-full object-cover flex-none"
+                      proxyBaseUrl={proxyBaseUrl}
                     />
                     <div className="min-w-0 gap-1 flex flex-col">
                       <div className="text-xs font-medium text-black/70">
