@@ -19,8 +19,12 @@ import logging
 import duckdb
 from datetime import datetime
 from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+# Carica il file .env dalla root del progetto (non dalla directory electronics_server_python)
+# __file__ è main.py in electronics_server_python/, quindi parent.parent è la root
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 # Configurazione logging per activity logs
 logging.basicConfig(

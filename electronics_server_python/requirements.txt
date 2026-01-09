@@ -3,3 +3,4 @@ mcp>=0.1.0
 uvicorn>=0.30.0
 duckdb>=0.10.0  # Aggiunto per MotherDuck
 httpx>=0.27.0  # Per proxy immagini (risolve problema ORB)
+python-dotenv>=1.0.0  # Per caricare variabili d'ambiente da .env
