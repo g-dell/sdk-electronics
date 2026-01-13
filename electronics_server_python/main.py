@@ -475,7 +475,36 @@ def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[st
     ]
     
     places = []
+    seen_ids = set()  # Traccia gli ID già visti per evitare duplicati
+    
     for idx, product in enumerate(products):
+        # Ottieni l'ID del prodotto - assicurati che sia univoco
+        product_id = product.get("id")
+        if not product_id:
+            # Se non c'è ID, genera uno basato sull'indice
+            product_id = f"product-{idx}"
+        else:
+            # Converti ID in stringa e assicurati che sia univoco
+            product_id = str(product_id).strip()
+            if not product_id:
+                product_id = f"product-{idx}"
+        
+        # Se l'ID è già stato visto, aggiungi un suffisso per renderlo univoco
+        original_id = product_id
+        counter = 0
+        while product_id in seen_ids:
+            counter += 1
+            product_id = f"{original_id}-{counter}"
+        
+        seen_ids.add(product_id)
+        
+        # Se abbiamo dovuto modificare l'ID, logga un warning
+        if product_id != original_id:
+            logger.warning(
+                f"Duplicate product ID detected: '{original_id}'. "
+                f"Using unique ID: '{product_id}' for product '{product.get('name', 'Unknown')}'"
+            )
+        
         # Ottieni il prezzo da prices.amountMax (colonna nel DB con dot notation)
         # DuckDB restituisce le colonne con dot come chiavi con dot o come dict annidato
         price_num = 0
@@ -507,8 +536,9 @@ def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[st
             rating = 4.5  # Default se non valido
         
         # Mappa i campi usando i nomi colonne corretti del database
+        # IMPORTANTE: Usa product_id (garantito univoco) invece di product.get("id")
         place = {
-            "id": product.get("id", f"product-{idx}"),
+            "id": product_id,  # Usa l'ID univoco garantito
             "name": product.get("name", "Unknown Product"),
             "coords": coords,
             "description": product.get("descrizione_prodotto", ""),  # Usa descrizione_prodotto dal DB

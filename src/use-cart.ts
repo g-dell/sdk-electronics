@@ -1,4 +1,5 @@
-import { useWidgetState } from "./use-widget-state";
+import React from "react";
+import { useOpenAiGlobal } from "./use-openai-global";
 import type { CartItem } from "./types";
 
 type CartWidgetState = {
@@ -6,6 +7,9 @@ type CartWidgetState = {
   items?: CartItem[];
   [key: string]: unknown;
 };
+
+// Chiave specifica per il carrello condiviso tra widget (diversa da electronics-shop)
+const CART_STATE_KEY = "sharedCartItems";
 
 const createDefaultCartState = (): CartWidgetState => ({
   items: [],
@@ -16,15 +20,91 @@ const createDefaultCartState = (): CartWidgetState => ({
  * Usa widgetState globale per persistenza tra widget
  */
 export function useCart() {
-  const [cartState, setCartState] = useWidgetState<CartWidgetState>(
-    createDefaultCartState
-  );
+  // IMPORTANTE: Il carrello parte SEMPRE vuoto e legge SOLO dalla chiave specifica "sharedCartItems"
+  // Ignora completamente qualsiasi altro dato in widgetState (es. da electronics-shop)
+  // Usa useOpenAiGlobal per reagire ai cambiamenti di widgetState
+  const widgetStateGlobal = useOpenAiGlobal("widgetState") as Record<string, unknown> | null;
+  
+  // Estrai SOLO la chiave specifica, ignora tutto il resto
+  const widgetStateFromGlobal = React.useMemo(() => {
+    if (widgetStateGlobal && typeof widgetStateGlobal === "object") {
+      const globalState = widgetStateGlobal as Record<string, unknown>;
+      // Leggi SOLO dalla chiave specifica "sharedCartItems", ignora qualsiasi altra chiave
+      if (globalState[CART_STATE_KEY] && typeof globalState[CART_STATE_KEY] === "object") {
+        const globalCartState = globalState[CART_STATE_KEY] as CartWidgetState;
+        if (Array.isArray(globalCartState.items)) {
+          return globalCartState;
+        }
+      }
+    }
+    return null;
+  }, [widgetStateGlobal]);
+
+  const [cartState, setCartState] = React.useState<CartWidgetState>(() => {
+    // Se c'è uno stato valido nella chiave specifica, usalo
+    if (widgetStateFromGlobal && Array.isArray(widgetStateFromGlobal.items) && widgetStateFromGlobal.items.length > 0) {
+      console.log("[useCart] Initializing from global state:", widgetStateFromGlobal.items.length, "items");
+      return widgetStateFromGlobal;
+    }
+    // Altrimenti parte sempre vuoto
+    console.log("[useCart] Starting with empty cart (no valid global state found)");
+    return createDefaultCartState();
+  });
+
+  // Sincronizza quando widgetState globale cambia (solo per la chiave specifica)
+  React.useEffect(() => {
+    if (widgetStateFromGlobal && Array.isArray(widgetStateFromGlobal.items)) {
+      const currentItems = Array.isArray(cartState?.items) ? cartState.items : [];
+      const globalItems = widgetStateFromGlobal.items;
+      // Solo sincronizza se è diverso
+      if (JSON.stringify(currentItems) !== JSON.stringify(globalItems)) {
+        console.log("[useCart] Syncing from global state:", globalItems.length, "items");
+        setCartState(widgetStateFromGlobal);
+      }
+    } else {
+      // Se la chiave specifica non esiste o è vuota, assicurati che il carrello sia vuoto
+      const currentItems = Array.isArray(cartState?.items) ? cartState.items : [];
+      if (currentItems.length > 0) {
+        // Se abbiamo items locali ma non c'è la chiave globale, potrebbe essere un problema
+        // Ma non resettiamo automaticamente perché potrebbero essere stati aggiunti tramite i pulsanti
+        console.log("[useCart] Local state has items but global state key not found or empty");
+      }
+    }
+  }, [widgetStateFromGlobal]);
+
+  // Aggiorna widgetState globale quando cambia cartState
+  const updateGlobalState = React.useCallback((newState: CartWidgetState) => {
+    setCartState(newState);
+    if (typeof window !== "undefined" && window.openai?.setWidgetState) {
+      const currentGlobalState = (window.openai.widgetState || {}) as Record<string, unknown>;
+      void window.openai.setWidgetState({
+        ...currentGlobalState,
+        [CART_STATE_KEY]: newState,
+      });
+    }
+  }, []);
 
   const cartItems = Array.isArray(cartState?.items) ? cartState.items : [];
+  
+  // Verifica che non ci siano prodotti indesiderati
+  React.useEffect(() => {
+    if (cartItems.length > 0) {
+      // Log per debug: verifica quali prodotti sono nel carrello
+      console.log("[useCart] Current cart items:", cartItems.map(item => ({
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity
+      })));
+    }
+  }, [cartItems.length]); // Solo quando cambia il numero di items
+  
+  // Prevenzione chiamate multiple rapide (debounce per ID)
+  const lastAddTimeRef = React.useRef<Map<string, number>>(new Map());
 
   /**
    * Aggiunge un prodotto al carrello
    * Se il prodotto esiste già, incrementa la quantità
+   * IMPORTANTE: Aggiunge SOLO il prodotto specificato, non altri prodotti
    */
   function addToCart(product: {
     id: string;
@@ -39,14 +119,45 @@ export function useCart() {
       return;
     }
 
+    // Prevenzione chiamate multiple rapide (debounce di 500ms per ID)
+    const now = Date.now();
+    const lastAddTime = lastAddTimeRef.current.get(product.id) || 0;
+    const timeSinceLastAdd = now - lastAddTime;
+    
+    if (timeSinceLastAdd < 500) {
+      console.warn(
+        `[useCart] Ignoring rapid duplicate add request for product "${product.name}" (${product.id}). ` +
+        `Last add was ${timeSinceLastAdd}ms ago.`
+      );
+      return;
+    }
+    
+    lastAddTimeRef.current.set(product.id, now);
+
+    // Log per debug
+    console.log("[useCart] Adding product to cart:", {
+      id: product.id,
+      name: product.name,
+      timestamp: new Date().toISOString(),
+    });
+
     setCartState((prevState) => {
       const baseState: CartWidgetState = prevState ?? createDefaultCartState();
       const items = Array.isArray(baseState.items)
         ? baseState.items.map((item) => ({ ...item }))
         : [];
 
-      // Cerca se il prodotto esiste già nel carrello
+      // Cerca se il prodotto esiste già nel carrello (solo per ID specifico)
       const existingIndex = items.findIndex((item) => item.id === product.id);
+      
+      // Debug: verifica se ci sono altri prodotti con lo stesso ID (non dovrebbe succedere)
+      const duplicateIds = items.filter((item) => item.id === product.id);
+      if (duplicateIds.length > 1) {
+        console.warn(
+          `[useCart] WARNING: Found ${duplicateIds.length} items with the same ID "${product.id}" in cart!`,
+          duplicateIds
+        );
+      }
 
       // Converti prezzo da stringa a numero se necessario
       let price = 0;
@@ -68,14 +179,17 @@ export function useCart() {
       const imageUrl = product.image || product.thumbnail || "";
 
       if (existingIndex >= 0) {
-        // Prodotto già presente: incrementa quantità
+        // Prodotto già presente: incrementa quantità SOLO per questo prodotto specifico
         const current = items[existingIndex];
         items[existingIndex] = {
           ...current,
           quantity: (current.quantity ?? 0) + 1,
         };
+        console.log(
+          `[useCart] Product "${product.name}" (${product.id}) already in cart, incrementing quantity to ${items[existingIndex].quantity}`
+        );
       } else {
-        // Nuovo prodotto: aggiungi al carrello
+        // Nuovo prodotto: aggiungi SOLO questo prodotto al carrello
         const newItem: CartItem = {
           id: product.id,
           name: product.name,
@@ -85,9 +199,36 @@ export function useCart() {
           image: imageUrl,
         };
         items.push(newItem);
+        console.log(
+          `[useCart] Added new product "${product.name}" (${product.id}) to cart. Total items: ${items.length}`
+        );
       }
 
-      return { ...baseState, items };
+      // Verifica finale: assicurati che non ci siano duplicati
+      const finalItemIds = items.map((item) => item.id);
+      const uniqueIds = new Set(finalItemIds);
+      if (finalItemIds.length !== uniqueIds.size) {
+        console.error(
+          "[useCart] ERROR: Duplicate IDs detected in cart!",
+          finalItemIds.filter((id, index) => finalItemIds.indexOf(id) !== index)
+        );
+        // Rimuovi duplicati, mantieni solo il primo
+        const seen = new Set<string>();
+        const deduplicatedItems = items.filter((item) => {
+          if (seen.has(item.id)) {
+            return false;
+          }
+          seen.add(item.id);
+          return true;
+        });
+        const newState = { ...baseState, items: deduplicatedItems };
+        updateGlobalState(newState);
+        return newState;
+      }
+
+      const newState = { ...baseState, items };
+      updateGlobalState(newState);
+      return newState;
     });
   }
 
@@ -112,7 +253,9 @@ export function useCart() {
         }
       }
 
-      return { ...baseState, items };
+      const newState = { ...baseState, items };
+      updateGlobalState(newState);
+      return newState;
     });
   }
 

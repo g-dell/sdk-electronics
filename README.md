@@ -131,6 +131,24 @@ pip install -r electronics_server_python/requirements.txt
 uvicorn electronics_server_python.main:app --port 8000
 ```
 
+#### Electronics Shopping Cart System
+
+The Electronics server includes a shared shopping cart system that works across all product widgets:
+
+- **Shared Cart Hook (`useCart`)**: A React hook (`src/use-cart.ts`) that manages cart state across all widgets using a dedicated `sharedCartItems` key in `widgetState` to avoid conflicts with other widgets
+- **Add to Cart Buttons**: All product widgets include "Aggiungi al carrello" (Add to Cart) buttons:
+  - `electronics-carousel`: Button on each product card
+  - `electronics-list`: Button on each list item
+  - `electronics-albums`: Button in fullscreen product view
+  - `electronics-map`: Button in sidebar and inspector
+  - `mixed-auth-search`: Button on each search result card
+- **Shopping Cart Widget**: A dedicated `shopping-cart` widget that displays only products explicitly added via the "Add to Cart" buttons
+- **Empty Cart by Default**: The cart starts empty and only shows products that users have manually added
+- **Duplicate Prevention**: Includes debouncing (500ms) and duplicate detection to prevent accidental multiple additions
+- **Unique Product IDs**: Backend ensures unique product IDs to prevent conflicts
+
+The cart state is isolated from other widgets (like `electronics-shop`) and persists across widget interactions, allowing users to add products from different views and see them all in the cart.
+
 ### Authenticated Python server
 
 ```bash
@@ -213,6 +231,47 @@ You can add your app to the conversation context by selecting it in the "More" o
 ![more-chatgpt](https://github.com/user-attachments/assets/26852b36-7f9e-4f48-a515-aebd87173399)
 
 You can then invoke tools by asking something related. For example, for the Pizzaz app, you can ask "What are the best pizzas in town?".
+
+## Electronics Shopping Cart Architecture
+
+### Overview
+
+The Electronics shopping cart system uses a centralized state management approach with the `useCart` hook. This ensures that products added from any widget are visible in the cart across all views.
+
+### Key Components
+
+1. **`src/use-cart.ts`**: Central hook that manages cart state
+   - Uses `sharedCartItems` key in `window.openai.widgetState` to store cart data
+   - Isolates cart state from other widgets (prevents conflicts with `electronics-shop`)
+   - Provides `addToCart`, `removeFromCart`, and `isInCart` functions
+   - Includes debouncing (500ms) to prevent rapid duplicate additions
+
+2. **`src/shopping-cart/index.tsx`**: Dedicated cart widget
+   - Displays only products added via "Add to Cart" buttons
+   - Shows empty state message when no products are added
+   - Allows quantity adjustment for cart items
+
+3. **Product Widgets**: All widgets that display products include "Add to Cart" buttons
+   - `src/electronics-carousel/PlaceCard.jsx`
+   - `src/electronics-list/index.jsx`
+   - `src/electronics-albums/FullscreenViewer.jsx`
+   - `src/electronics/Sidebar.jsx` and `Inspector.jsx`
+   - `src/mixed-auth-search/SliceCard.jsx`
+
+### State Management
+
+- **Storage**: Cart state is stored in `window.openai.widgetState.sharedCartItems`
+- **Isolation**: Uses dedicated key to avoid conflicts with other widgets
+- **Persistence**: State persists across widget interactions and tool calls
+- **Initialization**: Cart always starts empty unless products were previously added
+
+### User Flow
+
+1. User views products in any widget (carousel, list, albums, map, search)
+2. User clicks "Aggiungi al carrello" button on desired products
+3. Products are added to shared cart state via `useCart().addToCart()`
+4. User opens cart widget (`shopping-cart`) to see all added products
+5. User can adjust quantities or proceed to checkout
 
 ## Next steps
 

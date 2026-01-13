@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { useOpenAiGlobal } from "../use-openai-global";
-import { useWidgetState } from "../use-widget-state";
+import { useCart } from "../use-cart";
 import { AvocadoIcon, BreadIcon, EggIcon, JarIcon, TomatoIcon } from "./icons";
 import type { CartItem } from "../types";
 
@@ -54,13 +54,17 @@ const iconMatchers = [
 ];
 
 function App() {
+  // NOTA: toolOutput e toolResponseMetadata sono usati solo per debug, non per popolare il carrello
   const toolOutput = useOpenAiGlobal("toolOutput");
   const toolResponseMetadata = useOpenAiGlobal("toolResponseMetadata");
-  const widgetState = useOpenAiGlobal("widgetState");
-  const [cartState, setCartState] = useWidgetState<CartWidgetState>(
-    createDefaultCartState
-  );
-  const cartItems = Array.isArray(cartState?.items) ? cartState.items : [];
+  
+  // IMPORTANTE: shopping-cart usa useCart che gestisce il carrello condiviso tramite la chiave specifica "sharedCartItems"
+  // Questo garantisce che il carrello mostri SOLO i prodotti aggiunti tramite i pulsanti "Aggiungi al carrello"
+  // Ignora completamente qualsiasi altro dato in widgetState (es. da electronics-shop)
+  const { cartItems, addToCart, removeFromCart } = useCart();
+  
+  // Mantieni cartState per compatibilità con il codice esistente (per debug)
+  const cartState = useMemo(() => ({ items: cartItems }), [cartItems]);
   const animationStyles = `
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(10px); }
@@ -73,45 +77,37 @@ function App() {
       return;
     }
 
-    setCartState((prevState) => {
-      const baseState: CartWidgetState = prevState ?? {};
-      const items = Array.isArray(baseState.items)
-        ? baseState.items.map((item) => ({ ...item }))
-        : [];
-
-      const idx = items.findIndex((item) => item.id === id);
-      if (idx === -1) {
-        return baseState;
+    // Usa removeFromCart per decrementare (che gestisce anche la rimozione quando quantity = 0)
+    // Per incrementare, trova l'item e aggiungilo di nuovo (useCart incrementerà la quantità)
+    if (delta < 0) {
+      // Decrementa: usa removeFromCart che decrementa di 1
+      for (let i = 0; i < Math.abs(delta); i++) {
+        removeFromCart(id);
       }
-
-      const current = items[idx];
-      const nextQuantity = Math.max(0, (current.quantity ?? 0) + delta);
-      if (nextQuantity === 0) {
-        items.splice(idx, 1);
-      } else {
-        items[idx] = { ...current, quantity: nextQuantity };
-      }
-
-      return { ...baseState, items };
-    });
-  }
-
-  // Rimuoviamo la logica che aggiunge items da toolOutput
-  // Ora il carrello mostra solo gli items aggiunti tramite i pulsanti "Aggiungi al carrello" nei widget
-  // Il carrello viene popolato direttamente tramite useWidgetState quando l'utente clicca sui pulsanti
-  
-  // Sincronizza lo stato iniziale da widgetState se presente (per persistenza tra sessioni)
-  useEffect(() => {
-    if (widgetState && typeof widgetState === "object") {
-      const stateFromWindow = widgetState as CartWidgetState;
-      if (stateFromWindow.items && Array.isArray(stateFromWindow.items)) {
-        // Se widgetState ha items e il nostro stato locale è vuoto, sincronizza
-        if (!cartState?.items || cartState.items.length === 0) {
-          setCartState(stateFromWindow);
+    } else {
+      // Incrementa: trova l'item e aggiungilo di nuovo (useCart incrementerà la quantità se esiste già)
+      const item = cartItems.find((item) => item.id === id);
+      if (item) {
+        // useCart.addToCart incrementerà la quantità se l'item esiste già
+        for (let i = 0; i < delta; i++) {
+          addToCart({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            description: item.description,
+            image: item.image,
+          });
         }
       }
     }
-  }, [widgetState]);
+  }
+
+  // IMPORTANTE: Il carrello mostra SOLO gli items aggiunti tramite i pulsanti "Aggiungi al carrello" nei widget
+  // NON sincronizziamo da widgetState perché potrebbe contenere prodotti da altri widget (es. electronics-shop)
+  // Il carrello viene popolato direttamente tramite useWidgetState quando l'utente clicca sui pulsanti nei widget
+  
+  // Rimuoviamo completamente la sincronizzazione da widgetState per evitare prodotti indesiderati
+  // Il carrello parte sempre vuoto e viene popolato solo tramite i pulsanti "Aggiungi al carrello"
 
   function getIconForItem(name: string) {
     const words = name

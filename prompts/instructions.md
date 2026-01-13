@@ -175,6 +175,12 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 
 ⚠️ **Carrello e Checkout**: Il tool `electronics-shop` include funzionalità complete di carrello con possibilità di aggiungere/rimuovere prodotti, selezionare quantità, filtrare per categoria (Video & TV, Informatica, Audio), e procedere al checkout. Usalo quando l'utente è pronto ad acquistare.
 
+⚠️ **REGOLE FONDAMENTALI DEL CARRELLO**:
+- **Il carrello deve essere sempre vuoto all'inizio**: Quando viene aperto il widget del carrello (`shopping-cart` o `electronics-shop`), se nessun prodotto è stato aggiunto tramite i pulsanti "Aggiungi al carrello", il carrello deve essere completamente vuoto e mostrare un messaggio appropriato (es. "Carrello vuoto" o "Non hai aggiunto nessun articolo al carrello").
+- **I prodotti vengono aggiunti SOLO tramite i pulsanti "Aggiungi al carrello"**: Tutti i widget che mostrano prodotti (carousel, list, albums, map, search) hanno un pulsante "Aggiungi al carrello" su ogni prodotto. Quando l'utente clicca su questo pulsante, il prodotto deve essere aggiunto al carrello e visualizzato quando l'utente apre il widget del carrello.
+- **Il carrello mostra SOLO i prodotti aggiunti manualmente**: Il carrello NON deve mostrare prodotti random, suggeriti automaticamente, o da altre fonti. Mostra SOLO i prodotti che l'utente ha esplicitamente aggiunto cliccando sui pulsanti "Aggiungi al carrello" nei vari widget.
+- **Persistenza tra widget**: Se l'utente aggiunge un prodotto dal carousel e poi apre il negozio (`electronics-shop`) o il carrello (`shopping-cart`), quel prodotto deve essere visibile nel carrello. Il carrello è condiviso tra tutti i widget.
+
 ⚠️ **Database in Tempo Reale**: Il tool `product-list` recupera dati in tempo reale dal database MotherDuck (`app_gpt_elettronica`). I dati sono sempre aggiornati e includono tutti i dettagli tecnici necessari per confronti e analisi.
 
 ⚠️ **Categorie Prodotti**: I prodotti sono organizzati in tre categorie principali:

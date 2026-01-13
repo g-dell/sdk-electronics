@@ -11,8 +11,25 @@ function PlaceCard({ place }) {
   
   if (!place) return null;
 
-  const handleAddToCart = (e) => {
+  // Usa useCallback per evitare che l'handler venga ricreato ad ogni render
+  // e per assicurarsi che ogni PlaceCard abbia il proprio handler specifico
+  const handleAddToCart = React.useCallback((e) => {
+    e.preventDefault();
     e.stopPropagation();
+    
+    // Verifica che place.id esista e sia valido
+    if (!place.id) {
+      console.error("[PlaceCard] Cannot add to cart: place.id is missing", place);
+      return;
+    }
+    
+    console.log("[PlaceCard] Adding product to cart:", {
+      id: place.id,
+      name: place.name,
+      cardId: place.id, // Per verificare che sia il prodotto corretto
+    });
+    
+    // Aggiungi SOLO questo prodotto specifico
     addToCart({
       id: place.id,
       name: place.name,
@@ -20,7 +37,7 @@ function PlaceCard({ place }) {
       description: place.description,
       thumbnail: place.thumbnail,
     });
-  };
+  }, [place.id, place.name, place.price, place.description, place.thumbnail, addToCart]);
 
   const inCart = isInCart(place.id);
 
