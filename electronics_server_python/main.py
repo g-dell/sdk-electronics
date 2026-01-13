@@ -164,16 +164,23 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
     
     # Cerca la categoria nel mapping
     category_tags = None
+    matched_main_category = None
     for main_category, tags in CATEGORY_MAPPING.items():
         if category_lower == main_category.lower() or category_lower in [t.lower() for t in tags]:
             category_tags = tags
+            matched_main_category = main_category
             break
     
     # Se non trovata nel mapping, usa la categoria come tag diretto
     if category_tags is None:
         category_tags = [category_lower]
+        logger.debug(f"Category '{category}' not found in mapping, using as direct tag")
+    else:
+        logger.debug(f"Category '{category}' matched to '{matched_main_category}' with tags: {category_tags}")
     
     filtered_products = []
+    products_without_categories = 0
+    
     for product in products:
         # Estrai le categorie/tag dal prodotto
         product_categories = []
@@ -192,6 +199,11 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
             elif isinstance(product["categories"], str):
                 product_categories = [cat.strip().lower() for cat in product["categories"].split(",")]
         
+        # Se il prodotto non ha categorie, salta (ma conta per logging)
+        if not product_categories:
+            products_without_categories += 1
+            continue
+        
         # Verifica se il prodotto appartiene alla categoria
         # Controlla se almeno uno dei tag della categoria corrisponde a una categoria del prodotto
         matches = False
@@ -199,7 +211,10 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
             category_tag_lower = category_tag.lower()
             # Controlla match esatto o parziale (es. "tv" matcha "tv accessories")
             for product_cat in product_categories:
-                if category_tag_lower in product_cat or product_cat in category_tag_lower:
+                # Match esatto o parziale (controlla se il tag è contenuto nella categoria o viceversa)
+                if (category_tag_lower == product_cat or 
+                    category_tag_lower in product_cat or 
+                    product_cat in category_tag_lower):
                     matches = True
                     break
             if matches:
@@ -207,6 +222,21 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
         
         if matches:
             filtered_products.append(product)
+    
+    # Log dettagliato per debugging
+    if filtered_products:
+        logger.info(f"Filter matched {len(filtered_products)}/{len(products)} products for category '{category}'")
+    else:
+        logger.warning(
+            f"Filter found 0 products for category '{category}'. "
+            f"Total products: {len(products)}, Products without categories: {products_without_categories}. "
+            f"Searching for tags: {category_tags}"
+        )
+        # Log un esempio di prodotto per debugging
+        if products:
+            sample_product = products[0]
+            sample_cats = sample_product.get("categories") or sample_product.get("primaryCategories") or "N/A"
+            logger.debug(f"Sample product categories: {sample_cats}")
     
     return filtered_products
 
@@ -236,8 +266,18 @@ async def get_products_from_motherduck(category: str = None):
             
             # Filtra per categoria se specificata
             if category:
+                original_count = len(products)
                 products = filter_products_by_category(products, category)
-                logger.info(f"Filtered products by category '{category}': {len(products)} products found")
+                filtered_count = len(products)
+                logger.info(f"Filtered products by category '{category}': {filtered_count}/{original_count} products found")
+                
+                # Se il filtro non trova prodotti, prova una ricerca più permissiva
+                if filtered_count == 0 and original_count > 0:
+                    logger.warning(
+                        f"No products found for category '{category}'. "
+                        f"This might indicate a mismatch between category tags and database categories. "
+                        f"Total products available: {original_count}"
+                    )
             
             # Log per audit
             if products:
@@ -1277,12 +1317,8 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             else:
                 logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {album_count} albums")
             
-            # Valida che non ci siano argomenti inattesi
-            if arguments:
-                logger.warning(
-                    f"Tool {tool_name}: Received unexpected arguments: {list(arguments.keys())}. "
-                    "Ignoring arguments as this tool does not require input."
-                )
+            # Note: category parameter is expected and already processed above
+            # No need to warn about expected arguments
             
             result = types.ServerResult(
                 types.CallToolResult(
@@ -1306,6 +1342,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 # Se la lista è vuota, potrebbe essere dovuto a:
                 # 1. Errore precedente (pandas mancante, token mancante, ecc.) - già loggato come ERROR/WARNING
                 # 2. Database vuoto - comportamento normale
+                # 3. Filtro categoria che non ha trovato prodotti
                 logger.warning(
                     f"Tool {tool_name}: No products retrieved from MotherDuck. "
                     "Widget will display empty places list. "
@@ -1314,10 +1351,35 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             else:
                 logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {place_count} places")
             
-            # Valida che non ci siano argomenti inattesi
-            if arguments:
+            # Note: category parameter is expected and already processed above
+            # No need to warn about expected arguments
+            
+            result = types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=widget.response_text,
+                        )
+                    ],
+                    structuredContent={"places": places},
+                    _meta=_tool_invocation_meta(widget),
+                )
+            )
+        elif tool_name == "electronics-shop":
+            # electronics-shop potrebbe recuperare prodotti se necessario
+            # Per ora non recupera prodotti direttamente, ma potrebbe in futuro
+            # Se ha category parameter, potrebbe essere necessario recuperare prodotti
+            if category:
+                logger.info(f"Tool {tool_name}: Category filter requested but electronics-shop doesn't fetch products directly")
+                # Potremmo voler recuperare prodotti in futuro per electronics-shop
+                # Per ora, ignora il filtro categoria per electronics-shop
+            
+            # Valida che non ci siano altri argomenti inattesi (category è accettato ma ignorato per ora)
+            unexpected_args = [k for k in (arguments.keys() if arguments else []) if k != "category"]
+            if unexpected_args:
                 logger.warning(
-                    f"Tool {tool_name}: Received unexpected arguments: {list(arguments.keys())}. "
+                    f"Tool {tool_name}: Received unexpected arguments: {unexpected_args}. "
                     "Ignoring arguments as this tool does not require input."
                 )
             
@@ -1329,7 +1391,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                             text=widget.response_text,
                         )
                     ],
-                    structuredContent={"places": places},
+                    structuredContent={},
                     _meta=_tool_invocation_meta(widget),
                 )
             )
