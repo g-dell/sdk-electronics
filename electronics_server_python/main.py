@@ -252,12 +252,16 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
     
     # Log risultati
     if filtered_products:
-        logger.info(f"✅ Filter matched {len(filtered_products)}/{len(products)} products for category '{category}'")
+        logger.info(
+            f"✅ Filter matched {len(filtered_products)}/{len(products)} products for category '{category}'. "
+            f"Showing only filtered products (no unrelated products will be added)."
+        )
     else:
         logger.warning(
             f"❌ Filter found 0 products for category '{category}'. "
             f"Total products: {len(products)}, Products without categories: {products_without_categories}. "
-            f"Search tags: {search_tags[:5]}"
+            f"Search tags: {search_tags[:5]}. "
+            f"IMPORTANT: Will return empty list instead of adding unrelated products."
         )
         # Log esempi di categorie reali per debugging
         if products:
@@ -1341,8 +1345,15 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             )
         elif tool_name == "electronics-albums":
             # Widget che usa formato 'albums' - recupera prodotti e trasforma in albums
+            # IMPORTANTE: Se viene passata una categoria, mostra SOLO i prodotti di quella categoria
+            # Non aggiungere mai prodotti di altre categorie per "riempire" la galleria
             logger.info(f"Tool {tool_name}: Fetching products from MotherDuck and transforming to albums")
             products = await get_products_from_motherduck(category=category)
+            if category:
+                logger.info(
+                    f"Tool {tool_name}: Filtered {len(products)} products for category '{category}'. "
+                    "Showing only filtered products (no unrelated products will be added)."
+                )
             albums = transform_products_to_albums(products)
             album_count = len(albums) if albums else 0
             if album_count == 0:
@@ -1374,8 +1385,34 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             )
         elif tool_name in ["electronics-carousel", "electronics-map", "electronics-list", "mixed-auth-search"]:
             # Widget che usano formato 'places' - recupera prodotti e trasforma in places
+            # IMPORTANTE: Se viene passata una categoria, mostra SOLO i prodotti di quella categoria
+            # Non aggiungere mai prodotti di altre categorie per "riempire" la lista/carosello
             logger.info(f"Tool {tool_name}: Fetching products from MotherDuck and transforming to places")
             products = await get_products_from_motherduck(category=category)
+            
+            # Per electronics-carousel, limita a 12 prodotti se viene passata una categoria
+            # IMPORTANTE: Non aggiungere prodotti di altre categorie se il filtro ne trova meno di 12
+            # Il limite è un MASSIMO, non un obbligo - se ci sono solo 5 prodotti filtrati, mostra solo quelli
+            if category and tool_name != "electronics-carousel":
+                logger.info(
+                    f"Tool {tool_name}: Filtered {len(products)} products for category '{category}'. "
+                    "Showing only filtered products (no unrelated products will be added)."
+                )
+            if tool_name == "electronics-carousel" and category:
+                MAX_CAROUSEL_PRODUCTS = 12
+                original_count = len(products)
+                if original_count > MAX_CAROUSEL_PRODUCTS:
+                    products = products[:MAX_CAROUSEL_PRODUCTS]
+                    logger.info(
+                        f"Tool {tool_name}: Limited products from {original_count} to {len(products)} "
+                        f"(max {MAX_CAROUSEL_PRODUCTS} for carousel with category filter)"
+                    )
+                else:
+                    logger.info(
+                        f"Tool {tool_name}: Found {original_count} products for category '{category}' "
+                        f"(showing all {original_count}, no need to add unrelated products)"
+                    )
+            
             places = transform_products_to_places(products)
             place_count = len(places) if places else 0
             if place_count == 0:
