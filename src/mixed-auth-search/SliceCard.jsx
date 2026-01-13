@@ -1,7 +1,7 @@
 import React from "react";
 import { MapPin, Star } from "lucide-react";
 
-export default function SliceCard({ place, index }) {
+function SliceCard({ place, index }) {
   return (
     <article className="min-w-[240px] sm:min-w-[270px] max-w-[270px] flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
       <div className="relative h-36 w-full overflow-hidden">
@@ -42,3 +42,6 @@ export default function SliceCard({ place, index }) {
     </article>
   );
 }
+
+// Memoize component to prevent unnecessary re-renders when parent updates
+export default React.memo(SliceCard);

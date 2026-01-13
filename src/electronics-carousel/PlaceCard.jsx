@@ -4,7 +4,7 @@ import { Button } from "@openai/apps-sdk-ui/components/Button";
 import SafeImage from "../electronics/SafeImage";
 import { useProxyBaseUrl } from "../use-proxy-base-url";
 
-export default function PlaceCard({ place }) {
+function PlaceCard({ place }) {
   const proxyBaseUrl = useProxyBaseUrl();
   
   if (!place) return null;
@@ -42,3 +42,10 @@ export default function PlaceCard({ place }) {
     </div>
   );
 }
+
+// Memoize component to prevent unnecessary re-renders
+// Only re-render if place object reference changes
+export default React.memo(PlaceCard, (prevProps, nextProps) => {
+  // Custom comparison: only re-render if place ID changes
+  return prevProps.place?.id === nextProps.place?.id;
+});
