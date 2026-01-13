@@ -208,15 +208,45 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
         # Controlla se almeno uno dei tag della categoria corrisponde a una categoria del prodotto
         matches = False
         for category_tag in category_tags:
-            category_tag_lower = category_tag.lower()
-            # Controlla match esatto o parziale (es. "tv" matcha "tv accessories")
+            category_tag_lower = category_tag.lower().strip()
+            # Normalizza il tag rimuovendo caratteri speciali per matching più flessibile
+            category_tag_normalized = category_tag_lower.replace("&", "and").replace("-", " ").replace("_", " ")
+            
             for product_cat in product_categories:
-                # Match esatto o parziale (controlla se il tag è contenuto nella categoria o viceversa)
-                if (category_tag_lower == product_cat or 
-                    category_tag_lower in product_cat or 
-                    product_cat in category_tag_lower):
+                product_cat_normalized = product_cat.replace("&", "and").replace("-", " ").replace("_", " ")
+                
+                # Match esatto
+                if category_tag_lower == product_cat:
                     matches = True
                     break
+                
+                # Match parziale: controlla se il tag è contenuto nella categoria del prodotto
+                # Es: "tv" matcha "tv mounts", "tv accessories & parts"
+                if category_tag_lower in product_cat:
+                    matches = True
+                    break
+                
+                # Match parziale inverso: controlla se la categoria del prodotto è contenuta nel tag
+                # Es: "televisions" matcha "tv" quando cerchiamo "televisions"
+                if product_cat in category_tag_lower:
+                    matches = True
+                    break
+                
+                # Match normalizzato: confronta versioni normalizzate (senza &, -, _)
+                # Es: "tv accessories" matcha "tv accessories & parts"
+                if category_tag_normalized in product_cat_normalized or product_cat_normalized in category_tag_normalized:
+                    matches = True
+                    break
+                
+                # Match per parole: controlla se le parole del tag sono presenti nella categoria
+                # Es: "tv" matcha "tv mounts" perché "tv" è una parola
+                category_words = category_tag_normalized.split()
+                if len(category_words) > 0:
+                    # Se tutte le parole del tag sono presenti nella categoria del prodotto
+                    if all(word in product_cat_normalized for word in category_words if len(word) > 2):
+                        matches = True
+                        break
+            
             if matches:
                 break
         
@@ -232,11 +262,33 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
             f"Total products: {len(products)}, Products without categories: {products_without_categories}. "
             f"Searching for tags: {category_tags}"
         )
-        # Log un esempio di prodotto per debugging
+        # Log esempi di categorie reali nel database per debugging
         if products:
+            # Raccogli tutte le categorie uniche dai primi 10 prodotti
+            all_categories = set()
+            for i, product in enumerate(products[:10]):
+                product_cats = []
+                if product.get("primaryCategories"):
+                    if isinstance(product["primaryCategories"], list):
+                        product_cats = product["primaryCategories"]
+                    elif isinstance(product["primaryCategories"], str):
+                        product_cats = [cat.strip() for cat in product["primaryCategories"].split(",")]
+                elif product.get("categories"):
+                    if isinstance(product["categories"], list):
+                        product_cats = product["categories"]
+                    elif isinstance(product["categories"], str):
+                        product_cats = [cat.strip() for cat in product["categories"].split(",")]
+                all_categories.update([cat.lower() for cat in product_cats])
+            
+            logger.warning(
+                f"Sample categories found in database (first 10 products): {sorted(list(all_categories))[:20]}"
+            )
+            
+            # Log anche un prodotto completo per vedere la struttura
             sample_product = products[0]
-            sample_cats = sample_product.get("categories") or sample_product.get("primaryCategories") or "N/A"
-            logger.debug(f"Sample product categories: {sample_cats}")
+            logger.debug(f"Sample product structure - categories: {sample_product.get('categories')}, "
+                        f"primaryCategories: {sample_product.get('primaryCategories')}, "
+                        f"name: {sample_product.get('name', 'N/A')[:50]}")
     
     return filtered_products
 
