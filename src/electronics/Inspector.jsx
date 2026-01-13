@@ -1,12 +1,24 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { Star, X } from "lucide-react";
+import { Star, X, ShoppingCart } from "lucide-react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import SafeImage from "./SafeImage";
 import { useProxyBaseUrl } from "../use-proxy-base-url";
+import { useCart } from "../use-cart";
 
 export default function Inspector({ place, onClose }) {
   const proxyBaseUrl = useProxyBaseUrl();
+  const { addToCart, isInCart } = useCart();
+
+  const handleAddToCart = () => {
+    addToCart({
+      id: place.id,
+      name: place.name,
+      price: place.price,
+      description: place.description,
+      thumbnail: place.thumbnail,
+    });
+  };
   
   if (!place) return null;
   return (
@@ -49,9 +61,16 @@ export default function Inspector({ place, onClose }) {
               <span>· San Francisco</span>
             </div>
             <div className="mt-3 flex flex-row items-center gap-3 font-medium">
-              <Button color="primary" variant="solid" size="sm">
-                {" "}
-                Add to favorites
+              <Button 
+                color="primary" 
+                variant="solid" 
+                size="sm"
+                onClick={handleAddToCart}
+                disabled={isInCart(place.id)}
+                className="flex-1"
+              >
+                <ShoppingCart className="h-4 w-4 mr-2" />
+                {isInCart(place.id) ? "Nel carrello" : "Aggiungi al carrello"}
               </Button>
               <Button
                 color="primary"

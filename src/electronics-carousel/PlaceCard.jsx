@@ -1,13 +1,29 @@
 import React from "react";
-import { Star } from "lucide-react";
+import { Star, ShoppingCart } from "lucide-react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import SafeImage from "../electronics/SafeImage";
 import { useProxyBaseUrl } from "../use-proxy-base-url";
+import { useCart } from "../use-cart";
 
 function PlaceCard({ place }) {
   const proxyBaseUrl = useProxyBaseUrl();
+  const { addToCart, isInCart } = useCart();
   
   if (!place) return null;
+
+  const handleAddToCart = (e) => {
+    e.stopPropagation();
+    addToCart({
+      id: place.id,
+      name: place.name,
+      price: place.price,
+      description: place.description,
+      thumbnail: place.thumbnail,
+    });
+  };
+
+  const inCart = isInCart(place.id);
+
   return (
     <div className="min-w-[220px] select-none max-w-[220px] w-[65vw] sm:w-[220px] self-stretch flex flex-col">
       <div className="w-full">
@@ -33,9 +49,26 @@ function PlaceCard({ place }) {
             {place.description}
           </div>
         ) : null}
-        <div className="mt-5">
-          <Button color="primary" size="sm" variant="solid">
-            Learn more
+        <div className="mt-5 flex gap-2">
+          <Button 
+            color="primary" 
+            size="sm" 
+            variant="solid"
+            onClick={handleAddToCart}
+            disabled={inCart}
+            className="flex-1"
+          >
+            {inCart ? (
+              <>
+                <ShoppingCart className="h-4 w-4 mr-1" />
+                Nel carrello
+              </>
+            ) : (
+              <>
+                <ShoppingCart className="h-4 w-4 mr-1" />
+                Aggiungi al carrello
+              </>
+            )}
           </Button>
         </div>
       </div>

@@ -1,14 +1,26 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { PlusCircle, Star } from "lucide-react";
+import { PlusCircle, Star, ShoppingCart } from "lucide-react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { Image } from "@openai/apps-sdk-ui/components/Image";
 import { useOpenAiGlobal } from "../use-openai-global";
+import { useCart } from "../use-cart";
 
 function App() {
   // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
   const toolOutput = useOpenAiGlobal("toolOutput");
   const places = toolOutput?.places || [];
+  const { addToCart, isInCart } = useCart();
+
+  const handleAddToCart = (place) => {
+    addToCart({
+      id: place.id,
+      name: place.name,
+      price: place.price,
+      description: place.description,
+      thumbnail: place.thumbnail,
+    });
+  };
 
   return (
     <div className="antialiased w-full text-black px-4 pb-2 border border-black/10 rounded-2xl sm:rounded-3xl overflow-hidden bg-white">
@@ -86,13 +98,19 @@ function App() {
                 </div>
                 <div className="py-2 whitespace-nowrap flex justify-end">
                   <Button
-                    aria-label={`Add ${place.name}`}
-                    color="secondary"
-                    variant="ghost"
+                    aria-label={isInCart(place.id) ? `${place.name} già nel carrello` : `Aggiungi ${place.name} al carrello`}
+                    color={isInCart(place.id) ? "primary" : "secondary"}
+                    variant={isInCart(place.id) ? "soft" : "ghost"}
                     size="sm"
                     uniform
+                    onClick={() => handleAddToCart(place)}
+                    disabled={isInCart(place.id)}
                   >
-                    <PlusCircle strokeWidth={1.5} className="h-5 w-5" />
+                    {isInCart(place.id) ? (
+                      <ShoppingCart strokeWidth={1.5} className="h-5 w-5" />
+                    ) : (
+                      <PlusCircle strokeWidth={1.5} className="h-5 w-5" />
+                    )}
                   </Button>
                 </div>
               </div>

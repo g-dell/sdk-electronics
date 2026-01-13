@@ -1,7 +1,24 @@
 import React from "react";
-import { MapPin, Star } from "lucide-react";
+import { MapPin, Star, ShoppingCart } from "lucide-react";
+import { Button } from "@openai/apps-sdk-ui/components/Button";
+import { useCart } from "../use-cart";
 
 function SliceCard({ place, index }) {
+  const { addToCart, isInCart } = useCart();
+
+  const handleAddToCart = (e) => {
+    e.stopPropagation();
+    addToCart({
+      id: place.id,
+      name: place.name,
+      price: place.price,
+      description: place.description,
+      thumbnail: place.thumbnail,
+    });
+  };
+
+  const inCart = isInCart(place.id);
+
   return (
     <article className="min-w-[240px] sm:min-w-[270px] max-w-[270px] flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
       <div className="relative h-36 w-full overflow-hidden">
@@ -37,6 +54,19 @@ function SliceCard({ place, index }) {
             <MapPin strokeWidth={1.5} className="h-4 w-4" />
             <span>{place.city}</span>
           </div>
+        </div>
+        <div className="mt-2">
+          <Button
+            color={inCart ? "primary" : "secondary"}
+            variant={inCart ? "soft" : "solid"}
+            size="sm"
+            onClick={handleAddToCart}
+            disabled={inCart}
+            className="w-full"
+          >
+            <ShoppingCart className="h-4 w-4 mr-2" />
+            {inCart ? "Nel carrello" : "Aggiungi al carrello"}
+          </Button>
         </div>
       </div>
     </article>
