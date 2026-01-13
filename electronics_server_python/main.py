@@ -124,9 +124,99 @@ def get_motherduck_connection():
     return con
 
 
-async def get_products_from_motherduck():
+# Mapping delle categorie principali ai tag associati (stesso mapping del frontend)
+CATEGORY_MAPPING = {
+    "Video & TV": [
+        "tv", "televisions", "tv accessories", "tv mounts", "projectors",
+        "video projectors", "dvd players", "blu-ray players", "blu-ray",
+        "video", "home theater"
+    ],
+    "Informatica": [
+        "computers", "desktop computers", "monitors", "tablets",
+        "printers", "scanners", "computer accessories", "pc components",
+        "input devices", "keyboards", "mice", "laptops"
+    ],
+    "Audio": [
+        "audio", "speakers", "wireless speakers", "bluetooth speakers",
+        "headphones", "home audio", "home theater", "home theater systems",
+        "microphones", "amplifiers", "stereos", "portable audio"
+    ],
+}
+
+
+def filter_products_by_category(products: List[Dict[str, Any]], category: str) -> List[Dict[str, Any]]:
     """
-    Recupera i prodotti elettronici dal database MotherDuck.
+    Filtra i prodotti per categoria basandosi sui tag/categorie nel database.
+    
+    Args:
+        products: Lista di prodotti dal database
+        category: Nome della categoria (es. "Video & TV", "Informatica", "Audio")
+                  o tag specifico (es. "tv", "televisions")
+    
+    Returns:
+        Lista filtrata di prodotti che appartengono alla categoria specificata
+    """
+    if not products or not category:
+        return products
+    
+    # Normalizza la categoria (case-insensitive)
+    category_lower = category.lower().strip()
+    
+    # Cerca la categoria nel mapping
+    category_tags = None
+    for main_category, tags in CATEGORY_MAPPING.items():
+        if category_lower == main_category.lower() or category_lower in [t.lower() for t in tags]:
+            category_tags = tags
+            break
+    
+    # Se non trovata nel mapping, usa la categoria come tag diretto
+    if category_tags is None:
+        category_tags = [category_lower]
+    
+    filtered_products = []
+    for product in products:
+        # Estrai le categorie/tag dal prodotto
+        product_categories = []
+        
+        # Prova primaryCategories
+        if product.get("primaryCategories"):
+            if isinstance(product["primaryCategories"], list):
+                product_categories = [cat.lower() for cat in product["primaryCategories"]]
+            elif isinstance(product["primaryCategories"], str):
+                product_categories = [cat.strip().lower() for cat in product["primaryCategories"].split(",")]
+        
+        # Prova categories (fallback)
+        if not product_categories and product.get("categories"):
+            if isinstance(product["categories"], list):
+                product_categories = [cat.lower() for cat in product["categories"]]
+            elif isinstance(product["categories"], str):
+                product_categories = [cat.strip().lower() for cat in product["categories"].split(",")]
+        
+        # Verifica se il prodotto appartiene alla categoria
+        # Controlla se almeno uno dei tag della categoria corrisponde a una categoria del prodotto
+        matches = False
+        for category_tag in category_tags:
+            category_tag_lower = category_tag.lower()
+            # Controlla match esatto o parziale (es. "tv" matcha "tv accessories")
+            for product_cat in product_categories:
+                if category_tag_lower in product_cat or product_cat in category_tag_lower:
+                    matches = True
+                    break
+            if matches:
+                break
+        
+        if matches:
+            filtered_products.append(product)
+    
+    return filtered_products
+
+
+async def get_products_from_motherduck(category: str = None):
+    """
+    Recupera i prodotti elettronici dal database MotherDuck, opzionalmente filtrati per categoria.
+    
+    Args:
+        category: Categoria opzionale per filtrare i prodotti (es. "Video & TV", "tv", "Informatica")
     
     Returns:
         List[Dict[str, Any]]: Lista di prodotti come dizionari Python.
@@ -144,11 +234,16 @@ async def get_products_from_motherduck():
             # Converti DataFrame in lista di dizionari per compatibilità JSON
             products = products_df.to_dict(orient="records")
             
+            # Filtra per categoria se specificata
+            if category:
+                products = filter_products_by_category(products, category)
+                logger.info(f"Filtered products by category '{category}': {len(products)} products found")
+            
             # Log per audit
             if products:
-                logger.info(f"Retrieved {len(products)} products from MotherDuck")
+                logger.info(f"Retrieved {len(products)} products from MotherDuck" + (f" (filtered by category: {category})" if category else ""))
             else:
-                logger.warning("No products retrieved from MotherDuck (empty result)")
+                logger.warning("No products retrieved from MotherDuck (empty result)" + (f" for category: {category}" if category else ""))
             
             return products
     except ValueError as e:
@@ -762,6 +857,19 @@ EMPTY_TOOL_INPUT_SCHEMA: Dict[str, Any] = {
     "additionalProperties": False,
 }
 
+# Schema per tool che possono filtrare per categoria
+CATEGORY_FILTER_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "category": {
+            "type": "string",
+            "description": "Categoria opzionale per filtrare i prodotti (es. 'Video & TV', 'tv', 'Informatica', 'Audio'). Se non specificata, vengono restituiti tutti i prodotti.",
+        },
+    },
+    "required": [],
+    "additionalProperties": False,
+}
+
 
 
 def _resource_description(widget: ElectronicsWidget) -> str:
@@ -782,29 +890,34 @@ def _tool_description(widget: ElectronicsWidget) -> str:
             "una mappa interattiva. Restituisce un widget HTML con una mappa cliccabile."
         ),
         "electronics-carousel": (
-            "Mostra un carosello interattivo di prodotti elettronici. "
+            "Mostra un carosello interattivo di prodotti elettronici (massimo 12 prodotti). "
             "Usa questo tool quando l'utente vuole sfogliare prodotti in formato carosello o visualizzare "
-            "una selezione di prodotti in modo interattivo. Restituisce un widget HTML con un carosello navigabile."
+            "una selezione di prodotti in modo interattivo. Puoi filtrare per categoria usando il parametro 'category' "
+            "(es. 'Video & TV', 'tv', 'Informatica', 'Audio'). Restituisce un widget HTML con un carosello navigabile."
         ),
         "electronics-albums": (
             "Mostra una galleria di prodotti elettronici con visualizzazione a album. "
             "Usa questo tool quando l'utente chiede di vedere una galleria di prodotti, foto o immagini "
-            "in formato album. Restituisce un widget HTML con una galleria interattiva."
+            "in formato album. Puoi filtrare per categoria usando il parametro 'category' "
+            "(es. 'Video & TV', 'tv', 'Informatica', 'Audio'). Restituisce un widget HTML con una galleria interattiva."
         ),
         "electronics-list": (
             "Mostra una lista di prodotti elettronici. "
             "Usa questo tool quando l'utente chiede di vedere un elenco di prodotti o una lista semplice. "
-            "Restituisce un widget HTML con una lista formattata di prodotti."
+            "Puoi filtrare per categoria usando il parametro 'category' "
+            "(es. 'Video & TV', 'tv', 'Informatica', 'Audio'). Restituisce un widget HTML con una lista formattata di prodotti."
         ),
         "electronics-shop": (
-            "Apre il negozio elettronico completo con funzionalità di shopping. "
+            "Apre il negozio elettronico completo con funzionalità di shopping (massimo 24 prodotti). "
             "Usa questo tool quando l'utente vuole accedere al negozio completo, vedere prodotti con dettagli, "
-            "o iniziare lo shopping. Restituisce un widget HTML con l'interfaccia completa del negozio."
+            "o iniziare lo shopping. Puoi filtrare per categoria usando il parametro 'category' "
+            "(es. 'Video & TV', 'tv', 'Informatica', 'Audio'). Restituisce un widget HTML con l'interfaccia completa del negozio."
         ),
         "product-list": (
             "Recupera e mostra la lista completa di prodotti elettronici dal database MotherDuck. "
             "Usa questo tool quando l'utente chiede di vedere tutti i prodotti disponibili, cercare prodotti, "
-            "o visualizzare il catalogo completo. Restituisce un widget HTML con i prodotti recuperati dal database, "
+            "o visualizzare il catalogo completo. Puoi filtrare per categoria usando il parametro 'category' "
+            "(es. 'Video & TV', 'tv', 'Informatica', 'Audio'). Restituisce dati strutturati JSON con i prodotti recuperati dal database, "
             "inclusi dettagli come nome, prezzo, descrizione e immagini."
         ),
     }
@@ -836,12 +949,24 @@ async def _list_tools() -> List[types.Tool]:
     Returns:
         List[types.Tool]: Lista di tool con schemi input, descrizioni dettagliate e metadati.
     """
+    # Tool che possono filtrare per categoria (recuperano prodotti da MotherDuck)
+    tools_with_category_filter = {
+        "product-list",
+        "electronics-carousel",
+        "electronics-albums",
+        "electronics-list",
+        "electronics-shop",
+    }
+    
     tools = [
         types.Tool(
             name=widget.identifier,
             title=widget.title,
             description=_tool_description(widget),
-            inputSchema=deepcopy(EMPTY_TOOL_INPUT_SCHEMA),
+            inputSchema=deepcopy(
+                CATEGORY_FILTER_INPUT_SCHEMA if widget.identifier in tools_with_category_filter
+                else EMPTY_TOOL_INPUT_SCHEMA
+            ),
             _meta=_tool_meta(widget),
             # Annotazioni per indicare che i tool sono read-only e non distruttivi
             annotations={
@@ -1100,10 +1225,15 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         )
 
     try:
+        # Estrai il parametro category dagli argomenti (se presente)
+        category = arguments.get("category") if arguments else None
+        if category:
+            logger.info(f"Tool {tool_name}: Category filter requested: '{category}'")
+        
         if tool_name == "product-list":
             # Tool che richiede accesso a MotherDuck
             logger.info(f"Tool {tool_name}: Fetching products from MotherDuck")
-            products = await get_products_from_motherduck()
+            products = await get_products_from_motherduck(category=category)
             product_count = len(products) if products else 0
             if product_count == 0:
                 # Se la lista è vuota, potrebbe essere dovuto a:
@@ -1132,7 +1262,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         elif tool_name == "electronics-albums":
             # Widget che usa formato 'albums' - recupera prodotti e trasforma in albums
             logger.info(f"Tool {tool_name}: Fetching products from MotherDuck and transforming to albums")
-            products = await get_products_from_motherduck()
+            products = await get_products_from_motherduck(category=category)
             albums = transform_products_to_albums(products)
             album_count = len(albums) if albums else 0
             if album_count == 0:
@@ -1169,7 +1299,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         elif tool_name in ["electronics-carousel", "electronics-map", "electronics-list", "mixed-auth-search"]:
             # Widget che usano formato 'places' - recupera prodotti e trasforma in places
             logger.info(f"Tool {tool_name}: Fetching products from MotherDuck and transforming to places")
-            products = await get_products_from_motherduck()
+            products = await get_products_from_motherduck(category=category)
             places = transform_products_to_places(products)
             place_count = len(places) if places else 0
             if place_count == 0:
