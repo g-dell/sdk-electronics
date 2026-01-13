@@ -148,6 +148,9 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
     """
     Filtra i prodotti per categoria basandosi sui tag/categorie nel database.
     
+    Logica semplificata: cerca se uno dei tag della categoria è contenuto in una delle
+    categorie del prodotto (match parziale case-insensitive).
+    
     Args:
         products: Lista di prodotti dal database
         category: Nome della categoria (es. "Video & TV", "Informatica", "Audio")
@@ -159,93 +162,87 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
     if not products or not category:
         return products
     
-    # Normalizza la categoria (case-insensitive)
+    # Normalizza la categoria richiesta (case-insensitive)
     category_lower = category.lower().strip()
     
-    # Cerca la categoria nel mapping
-    category_tags = None
+    # Trova i tag da cercare nel mapping
+    search_tags = []
     matched_main_category = None
+    
+    # Cerca se la categoria richiesta corrisponde a una categoria principale o a un tag
     for main_category, tags in CATEGORY_MAPPING.items():
-        if category_lower == main_category.lower() or category_lower in [t.lower() for t in tags]:
-            category_tags = tags
+        if category_lower == main_category.lower():
+            # La categoria richiesta è una categoria principale
+            search_tags = [t.lower().strip() for t in tags]
+            matched_main_category = main_category
+            break
+        elif category_lower in [t.lower() for t in tags]:
+            # La categoria richiesta è uno dei tag di una categoria principale
+            search_tags = [t.lower().strip() for t in tags]
             matched_main_category = main_category
             break
     
-    # Se non trovata nel mapping, usa la categoria come tag diretto
-    if category_tags is None:
-        category_tags = [category_lower]
-        logger.debug(f"Category '{category}' not found in mapping, using as direct tag")
+    # Se non trovata nel mapping, usa la categoria stessa come tag da cercare
+    if not search_tags:
+        search_tags = [category_lower]
+        logger.info(f"Category '{category}' not in mapping, using as direct search tag")
     else:
-        logger.debug(f"Category '{category}' matched to '{matched_main_category}' with tags: {category_tags}")
+        logger.info(f"Category '{category}' matched to '{matched_main_category}', searching for tags: {search_tags[:5]}...")
     
     filtered_products = []
     products_without_categories = 0
     
     for product in products:
-        # Estrai le categorie/tag dal prodotto
-        product_categories = []
+        # Estrai tutte le categorie/tag del prodotto (da categories o primaryCategories)
+        product_categories_raw = []
         
-        # Prova primaryCategories
+        # Prova categories (campo principale nel database)
+        if product.get("categories"):
+            if isinstance(product["categories"], list):
+                product_categories_raw.extend([str(cat).strip() for cat in product["categories"]])
+            elif isinstance(product["categories"], str):
+                product_categories_raw.extend([cat.strip() for cat in product["categories"].split(",")])
+        
+        # Prova primaryCategories (fallback)
         if product.get("primaryCategories"):
             if isinstance(product["primaryCategories"], list):
-                product_categories = [cat.lower() for cat in product["primaryCategories"]]
+                product_categories_raw.extend([str(cat).strip() for cat in product["primaryCategories"]])
             elif isinstance(product["primaryCategories"], str):
-                product_categories = [cat.strip().lower() for cat in product["primaryCategories"].split(",")]
+                product_categories_raw.extend([cat.strip() for cat in product["primaryCategories"].split(",")])
         
-        # Prova categories (fallback)
-        if not product_categories and product.get("categories"):
-            if isinstance(product["categories"], list):
-                product_categories = [cat.lower() for cat in product["categories"]]
-            elif isinstance(product["categories"], str):
-                product_categories = [cat.strip().lower() for cat in product["categories"].split(",")]
+        # Normalizza le categorie del prodotto (lowercase)
+        product_categories = [cat.lower().strip() for cat in product_categories_raw if cat]
         
-        # Se il prodotto non ha categorie, salta (ma conta per logging)
+        # Se il prodotto non ha categorie, salta
         if not product_categories:
             products_without_categories += 1
             continue
         
-        # Verifica se il prodotto appartiene alla categoria
-        # Controlla se almeno uno dei tag della categoria corrisponde a una categoria del prodotto
+        # Verifica se almeno uno dei tag da cercare matcha con una categoria del prodotto
+        # Match semplice: controlla se il tag è contenuto nella categoria (o viceversa per tag lunghi)
         matches = False
-        for category_tag in category_tags:
-            category_tag_lower = category_tag.lower().strip()
-            # Normalizza il tag rimuovendo caratteri speciali per matching più flessibile
-            category_tag_normalized = category_tag_lower.replace("&", "and").replace("-", " ").replace("_", " ")
+        for search_tag in search_tags:
+            search_tag_clean = search_tag.lower().strip()
             
             for product_cat in product_categories:
-                product_cat_normalized = product_cat.replace("&", "and").replace("-", " ").replace("_", " ")
+                product_cat_clean = product_cat.lower().strip()
                 
                 # Match esatto
-                if category_tag_lower == product_cat:
+                if search_tag_clean == product_cat_clean:
                     matches = True
                     break
                 
-                # Match parziale: controlla se il tag è contenuto nella categoria del prodotto
-                # Es: "tv" matcha "tv mounts", "tv accessories & parts"
-                if category_tag_lower in product_cat:
+                # Match parziale: il tag è contenuto nella categoria del prodotto
+                # Es: "tv" matcha "tv mounts", "tv accessories & parts", "tv ceiling & wall mounts"
+                if search_tag_clean in product_cat_clean:
                     matches = True
                     break
                 
-                # Match parziale inverso: controlla se la categoria del prodotto è contenuta nel tag
-                # Es: "televisions" matcha "tv" quando cerchiamo "televisions"
-                if product_cat in category_tag_lower:
+                # Match parziale inverso: la categoria è contenuta nel tag (per tag composti)
+                # Es: "televisions" contiene "tv" quando cerchiamo "tv"
+                if len(search_tag_clean) > 3 and product_cat_clean in search_tag_clean:
                     matches = True
                     break
-                
-                # Match normalizzato: confronta versioni normalizzate (senza &, -, _)
-                # Es: "tv accessories" matcha "tv accessories & parts"
-                if category_tag_normalized in product_cat_normalized or product_cat_normalized in category_tag_normalized:
-                    matches = True
-                    break
-                
-                # Match per parole: controlla se le parole del tag sono presenti nella categoria
-                # Es: "tv" matcha "tv mounts" perché "tv" è una parola
-                category_words = category_tag_normalized.split()
-                if len(category_words) > 0:
-                    # Se tutte le parole del tag sono presenti nella categoria del prodotto
-                    if all(word in product_cat_normalized for word in category_words if len(word) > 2):
-                        matches = True
-                        break
             
             if matches:
                 break
@@ -253,42 +250,28 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
         if matches:
             filtered_products.append(product)
     
-    # Log dettagliato per debugging
+    # Log risultati
     if filtered_products:
-        logger.info(f"Filter matched {len(filtered_products)}/{len(products)} products for category '{category}'")
+        logger.info(f"✅ Filter matched {len(filtered_products)}/{len(products)} products for category '{category}'")
     else:
         logger.warning(
-            f"Filter found 0 products for category '{category}'. "
+            f"❌ Filter found 0 products for category '{category}'. "
             f"Total products: {len(products)}, Products without categories: {products_without_categories}. "
-            f"Searching for tags: {category_tags}"
+            f"Search tags: {search_tags[:5]}"
         )
-        # Log esempi di categorie reali nel database per debugging
+        # Log esempi di categorie reali per debugging
         if products:
-            # Raccogli tutte le categorie uniche dai primi 10 prodotti
             all_categories = set()
-            for i, product in enumerate(products[:10]):
-                product_cats = []
-                if product.get("primaryCategories"):
-                    if isinstance(product["primaryCategories"], list):
-                        product_cats = product["primaryCategories"]
-                    elif isinstance(product["primaryCategories"], str):
-                        product_cats = [cat.strip() for cat in product["primaryCategories"].split(",")]
-                elif product.get("categories"):
+            for product in products[:10]:
+                cats = []
+                if product.get("categories"):
                     if isinstance(product["categories"], list):
-                        product_cats = product["categories"]
+                        cats = [str(c).strip().lower() for c in product["categories"]]
                     elif isinstance(product["categories"], str):
-                        product_cats = [cat.strip() for cat in product["categories"].split(",")]
-                all_categories.update([cat.lower() for cat in product_cats])
+                        cats = [c.strip().lower() for c in product["categories"].split(",")]
+                all_categories.update(cats)
             
-            logger.warning(
-                f"Sample categories found in database (first 10 products): {sorted(list(all_categories))[:20]}"
-            )
-            
-            # Log anche un prodotto completo per vedere la struttura
-            sample_product = products[0]
-            logger.debug(f"Sample product structure - categories: {sample_product.get('categories')}, "
-                        f"primaryCategories: {sample_product.get('primaryCategories')}, "
-                        f"name: {sample_product.get('name', 'N/A')[:50]}")
+            logger.warning(f"Sample categories in database: {sorted(list(all_categories))[:15]}")
     
     return filtered_products
 
@@ -319,16 +302,21 @@ async def get_products_from_motherduck(category: str = None):
             # Filtra per categoria se specificata
             if category:
                 original_count = len(products)
+                logger.info(f"🔍 Applying category filter '{category}' to {original_count} products")
                 products = filter_products_by_category(products, category)
                 filtered_count = len(products)
-                logger.info(f"Filtered products by category '{category}': {filtered_count}/{original_count} products found")
+                logger.info(f"✅ Filter result: {filtered_count}/{original_count} products match category '{category}'")
                 
-                # Se il filtro non trova prodotti, prova una ricerca più permissiva
                 if filtered_count == 0 and original_count > 0:
                     logger.warning(
-                        f"No products found for category '{category}'. "
-                        f"This might indicate a mismatch between category tags and database categories. "
-                        f"Total products available: {original_count}"
+                        f"⚠️ No products found for category '{category}'. "
+                        f"Total products available: {original_count}. "
+                        f"Check filter logic and category mapping."
+                    )
+                elif filtered_count == original_count:
+                    logger.warning(
+                        f"⚠️ Filter returned all products ({filtered_count}). "
+                        f"This might indicate the filter is not working correctly."
                     )
             
             # Log per audit
