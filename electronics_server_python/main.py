@@ -172,14 +172,32 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
     # Cerca se la categoria richiesta corrisponde a una categoria principale o a un tag
     for main_category, tags in CATEGORY_MAPPING.items():
         if category_lower == main_category.lower():
-            # La categoria richiesta è una categoria principale
+            # La categoria richiesta è una categoria principale - usa tutti i tag
             search_tags = [t.lower().strip() for t in tags]
             matched_main_category = main_category
             break
         elif category_lower in [t.lower() for t in tags]:
             # La categoria richiesta è uno dei tag di una categoria principale
-            search_tags = [t.lower().strip() for t in tags]
+            # IMPORTANTE: Se l'utente chiede un tag specifico (es. "tv"), usa solo tag strettamente correlati
+            # per evitare match ambigui (es. "home theater" è sia in Video & TV che in Audio)
             matched_main_category = main_category
+            
+            # Se il tag richiesto è specifico (es. "tv", "speakers"), filtra i tag per evitare ambiguità
+            if category_lower in ["tv", "televisions"]:
+                # Per "tv", usa solo tag strettamente correlati a TV, escludendo "home theater" che è ambiguo
+                search_tags = [t.lower().strip() for t in tags if t.lower() not in ["home theater", "home theater systems"]]
+                # Aggiungi sempre il tag richiesto stesso
+                if category_lower not in search_tags:
+                    search_tags.append(category_lower)
+            elif category_lower in ["speakers", "wireless speakers", "bluetooth speakers", "headphones", "audio"]:
+                # Per prodotti audio specifici, escludi "home theater" che potrebbe matchare prodotti TV
+                search_tags = [t.lower().strip() for t in tags if t.lower() not in ["home theater", "home theater systems"]]
+                # Aggiungi sempre il tag richiesto stesso
+                if category_lower not in search_tags:
+                    search_tags.append(category_lower)
+            else:
+                # Per altri tag, usa tutti i tag della categoria principale
+                search_tags = [t.lower().strip() for t in tags]
             break
     
     # Se non trovata nel mapping, usa la categoria stessa come tag da cercare
@@ -221,6 +239,32 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
         # Verifica se almeno uno dei tag da cercare matcha con una categoria del prodotto
         # Match semplice: controlla se il tag è contenuto nella categoria (o viceversa per tag lunghi)
         matches = False
+        
+        # Se stiamo cercando "tv" o "televisions", verifica che il prodotto non sia principalmente audio
+        # (per evitare che prodotti audio con "home theater" vengano inclusi)
+        if category_lower in ["tv", "televisions"]:
+            # Controlla se il prodotto ha categorie audio esclusive (senza categorie video)
+            has_audio_only = False
+            has_video_tags = False
+            
+            # Tag strettamente video/TV
+            video_tags = ["tv", "televisions", "television", "projector", "video", "dvd", "blu-ray", "blu ray"]
+            # Tag strettamente audio
+            audio_tags = ["speaker", "headphone", "microphone", "amplifier", "stereo", "portable audio"]
+            
+            for product_cat in product_categories:
+                product_cat_lower = product_cat.lower()
+                # Controlla se ha tag video
+                if any(video_tag in product_cat_lower for video_tag in video_tags):
+                    has_video_tags = True
+                # Controlla se ha solo tag audio (escludendo "home theater" che è ambiguo)
+                if any(audio_tag in product_cat_lower for audio_tag in audio_tags):
+                    has_audio_only = True
+            
+            # Se il prodotto ha solo tag audio e nessun tag video, escludilo quando cerchiamo TV
+            if has_audio_only and not has_video_tags:
+                continue
+        
         for search_tag in search_tags:
             search_tag_clean = search_tag.lower().strip()
             
@@ -234,13 +278,30 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
                 
                 # Match parziale: il tag è contenuto nella categoria del prodotto
                 # Es: "tv" matcha "tv mounts", "tv accessories & parts", "tv ceiling & wall mounts"
+                # IMPORTANTE: Evita match ambigui - "tv" non deve matchare "home theater" se stiamo cercando TV specifiche
                 if search_tag_clean in product_cat_clean:
+                    # Se stiamo cercando "tv" o "televisions", escludi match con "home theater" che è ambiguo
+                    # a meno che il prodotto non abbia anche tag video espliciti
+                    if category_lower in ["tv", "televisions"] and "home theater" in product_cat_clean:
+                        # Verifica se il prodotto ha anche tag video espliciti
+                        has_explicit_video_tag = any(
+                            video_tag in cat.lower() 
+                            for cat in product_categories 
+                            for video_tag in ["tv", "televisions", "television", "projector", "video"]
+                        )
+                        if not has_explicit_video_tag:
+                            # Skip questo match se il prodotto ha solo "home theater" senza tag video espliciti
+                            continue
                     matches = True
                     break
                 
                 # Match parziale inverso: la categoria è contenuta nel tag (per tag composti)
                 # Es: "televisions" contiene "tv" quando cerchiamo "tv"
+                # IMPORTANTE: Evita match ambigui anche qui
                 if len(search_tag_clean) > 3 and product_cat_clean in search_tag_clean:
+                    # Se stiamo cercando "tv" o "televisions", escludi match con "home theater"
+                    if category_lower in ["tv", "televisions"] and "home theater" in search_tag_clean:
+                        continue
                     matches = True
                     break
             
@@ -252,10 +313,19 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
     
     # Log risultati
     if filtered_products:
-        logger.info(
-            f"✅ Filter matched {len(filtered_products)}/{len(products)} products for category '{category}'. "
-            f"Showing only filtered products (no unrelated products will be added)."
-        )
+        # Log dettagliato per debug quando si cerca "tv" per verificare che non includa prodotti audio
+        if category_lower in ["tv", "televisions"]:
+            sample_names = [p.get("name", "Unknown")[:30] for p in filtered_products[:5]]
+            logger.info(
+                f"✅ Filter matched {len(filtered_products)}/{len(products)} products for category '{category}'. "
+                f"Sample products: {sample_names}. "
+                f"Showing only TV-related products (audio products excluded)."
+            )
+        else:
+            logger.info(
+                f"✅ Filter matched {len(filtered_products)}/{len(products)} products for category '{category}'. "
+                f"Showing only filtered products (no unrelated products will be added)."
+            )
     else:
         logger.warning(
             f"❌ Filter found 0 products for category '{category}'. "
