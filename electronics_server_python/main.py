@@ -836,7 +836,7 @@ async def _list_tools() -> List[types.Tool]:
     Returns:
         List[types.Tool]: Lista di tool con schemi input, descrizioni dettagliate e metadati.
     """
-    return [
+    tools = [
         types.Tool(
             name=widget.identifier,
             title=widget.title,
@@ -852,6 +852,27 @@ async def _list_tools() -> List[types.Tool]:
         )
         for widget in widgets
     ]
+    
+    # Aggiungi il tool get_instructions che non è un widget
+    tools.append(
+        types.Tool(
+            name="get_instructions",
+            title="Get Instructions",
+            description=(
+                "Restituisce il contenuto testuale delle istruzioni (prompt) attualmente utilizzate dal server. "
+                "Usa questo tool quando vuoi vedere quale prompt/instructions il server sta utilizzando. "
+                "Restituisce il testo completo delle istruzioni dal file prompts/instructions.md."
+            ),
+            inputSchema=deepcopy(EMPTY_TOOL_INPUT_SCHEMA),
+            annotations={
+                "destructiveHint": False,
+                "openWorldHint": False,
+                "readOnlyHint": True,
+            },
+        )
+    )
+    
+    return tools
 
 
 @mcp._mcp_server.list_resources()
@@ -992,6 +1013,75 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         f"Tool execution started: tool={tool_name}, "
         f"arguments_keys={list(arguments.keys()) if arguments else 'none'}"
     )
+    
+    # Gestione speciale per get_instructions (non è un widget)
+    if tool_name == "get_instructions":
+        try:
+            # Valida che non ci siano argomenti inattesi
+            if arguments:
+                logger.warning(
+                    f"Tool {tool_name}: Received unexpected arguments: {list(arguments.keys())}. "
+                    "Ignoring arguments as this tool does not require input."
+                )
+            
+            # Leggi il file prompts/instructions.md
+            # Il file è nella root del progetto, non nella directory electronics_server_python
+            instructions_path = Path(__file__).resolve().parent.parent / "prompts" / "instructions.md"
+            
+            if not instructions_path.exists():
+                error_msg = f"Instructions file not found: {instructions_path}"
+                logger.error(f"Tool {tool_name}: {error_msg}")
+                return types.ServerResult(
+                    types.CallToolResult(
+                        content=[
+                            types.TextContent(
+                                type="text",
+                                text=error_msg,
+                            )
+                        ],
+                        isError=True,
+                    )
+                )
+            
+            # Leggi il contenuto del file
+            instructions_text = instructions_path.read_text(encoding="utf-8")
+            logger.info(f"Tool {tool_name}: Successfully read instructions from {instructions_path}")
+            
+            result = types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=instructions_text,
+                        )
+                    ],
+                    structuredContent={},
+                )
+            )
+            
+            # Log successo esecuzione
+            duration = (datetime.now() - start_time).total_seconds()
+            logger.info(
+                f"Tool execution completed: tool={tool_name}, "
+                f"success=True, duration={duration:.3f}s"
+            )
+            
+            return result
+            
+        except Exception as e:
+            error_msg = f"Error reading instructions file: {str(e)}"
+            logger.error(f"Tool {tool_name}: {error_msg}", exc_info=True)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
     
     widget = WIDGETS_BY_ID.get(tool_name)
     if widget is None:
