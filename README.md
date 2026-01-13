@@ -124,6 +124,8 @@ pnpm start
 
 ### Electronics Python server
 
+The Electronics server exposes 7 tools/widgets for displaying and managing electronics products:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -135,6 +137,7 @@ uvicorn electronics_server_python.main:app --port 8000
 
 The Electronics server includes a shared shopping cart system that works across all product widgets:
 
+- **Tool `shopping-cart`**: A dedicated MCP tool that displays the shopping cart when the user requests to see it (e.g., "Show me the cart", "What's in my cart?")
 - **Shared Cart Hook (`useCart`)**: A React hook (`src/use-cart.ts`) that manages cart state across all widgets using a dedicated `sharedCartItems` key in `widgetState` to avoid conflicts with other widgets
 - **Add to Cart Buttons**: All product widgets include "Aggiungi al carrello" (Add to Cart) buttons:
   - `electronics-carousel`: Button on each product card
@@ -142,7 +145,7 @@ The Electronics server includes a shared shopping cart system that works across 
   - `electronics-albums`: Button in fullscreen product view
   - `electronics-map`: Button in sidebar and inspector
   - `mixed-auth-search`: Button on each search result card
-- **Shopping Cart Widget**: A dedicated `shopping-cart` widget that displays only products explicitly added via the "Add to Cart" buttons
+- **Shopping Cart Widget**: The `shopping-cart` widget displays only products explicitly added via the "Add to Cart" buttons
 - **Empty Cart by Default**: The cart starts empty and only shows products that users have manually added
 - **Duplicate Prevention**: Includes debouncing (500ms) and duplicate detection to prevent accidental multiple additions
 - **Unique Product IDs**: Backend ensures unique product IDs to prevent conflicts
@@ -240,18 +243,24 @@ The Electronics shopping cart system uses a centralized state management approac
 
 ### Key Components
 
-1. **`src/use-cart.ts`**: Central hook that manages cart state
+1. **Tool `shopping-cart` (Backend)**: MCP tool registered in `electronics_server_python/main.py`
+   - Exposed as a tool that the AI can call when the user requests to see the cart
+   - Returns the shopping cart widget HTML
+   - No input parameters required (cart state is managed client-side)
+
+2. **`src/use-cart.ts`**: Central hook that manages cart state
    - Uses `sharedCartItems` key in `window.openai.widgetState` to store cart data
    - Isolates cart state from other widgets (prevents conflicts with `electronics-shop`)
    - Provides `addToCart`, `removeFromCart`, and `isInCart` functions
    - Includes debouncing (500ms) to prevent rapid duplicate additions
 
-2. **`src/shopping-cart/index.tsx`**: Dedicated cart widget
+3. **`src/shopping-cart/index.tsx`**: Dedicated cart widget
    - Displays only products added via "Add to Cart" buttons
    - Shows empty state message when no products are added
    - Allows quantity adjustment for cart items
+   - Uses `useCart()` hook to read from shared cart state
 
-3. **Product Widgets**: All widgets that display products include "Add to Cart" buttons
+4. **Product Widgets**: All widgets that display products include "Add to Cart" buttons
    - `src/electronics-carousel/PlaceCard.jsx`
    - `src/electronics-list/index.jsx`
    - `src/electronics-albums/FullscreenViewer.jsx`
@@ -270,8 +279,10 @@ The Electronics shopping cart system uses a centralized state management approac
 1. User views products in any widget (carousel, list, albums, map, search)
 2. User clicks "Aggiungi al carrello" button on desired products
 3. Products are added to shared cart state via `useCart().addToCart()`
-4. User opens cart widget (`shopping-cart`) to see all added products
-5. User can adjust quantities or proceed to checkout
+4. User requests to see the cart (e.g., "Show me the cart", "What's in my cart?")
+5. AI calls the `shopping-cart` tool, which displays the cart widget
+6. Cart widget shows all products added via "Add to Cart" buttons
+7. User can adjust quantities or proceed to checkout
 
 ## Next steps
 

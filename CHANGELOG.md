@@ -15,7 +15,7 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/lang/it/).
   - `electronics-albums`: Pulsante nella vista fullscreen del prodotto
   - `electronics-map`: Pulsante nella sidebar e nell'inspector
   - `mixed-auth-search`: Pulsante su ogni card del carosello
-- **Widget `shopping-cart`**: Widget dedicato per visualizzare il carrello con prodotti aggiunti manualmente
+- **Tool `shopping-cart`**: Aggiunto nuovo tool MCP `shopping-cart` nel backend per mostrare il carrello quando l'utente lo richiede. Il widget mostra solo i prodotti aggiunti tramite i pulsanti "Aggiungi al carrello" nei vari widget
 - **Isolamento del carrello**: Il carrello usa una chiave specifica `sharedCartItems` nel `widgetState` per evitare interferenze con altri widget (es. `electronics-shop`)
 - **Gestione stato carrello**: Il carrello parte sempre vuoto e mostra solo prodotti aggiunti esplicitamente tramite i pulsanti
 - **Prevenzione duplicati**: Implementato debounce (500ms) e controllo duplicati per evitare aggiunte multiple accidentali
@@ -24,7 +24,8 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/lang/it/).
 ### Modificato
 - **Backend filtering**: Migliorato il filtro per categoria nel backend per evitare prodotti irrilevanti (es. audio quando si cerca TV)
 - **Limite carosello**: Il limite di 12 prodotti nel carosello è ora un massimo, non un obbligo. Se ci sono solo 5 prodotti della categoria richiesta, vengono mostrati solo quelli
-- **Istruzioni AI**: Aggiornate le istruzioni per l'AI con regole chiare sul comportamento del carrello
+- **Istruzioni AI**: Aggiornate le istruzioni per l'AI con regole chiare sul comportamento del carrello e quando usare il tool `shopping-cart` (quando l'utente chiede di vedere il carrello)
+- **Lista tool disponibili**: Aggiunto `shopping-cart` alla lista dei tool esposti dal server MCP (ora 7 tool totali)
 
 ### Corretto
 - **Carrello mostra prodotti random**: Risolto problema per cui il carrello mostrava prodotti non aggiunti manualmente

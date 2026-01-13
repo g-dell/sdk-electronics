@@ -731,6 +731,15 @@ widgets: List[ElectronicsWidget] = [
         html="<p>Product list is being rendered...</p>",
         response_text="Here are the products from MotherDuck!",
     ),
+    ElectronicsWidget(
+        identifier="shopping-cart",
+        title="Show Shopping Cart",
+        template_uri="ui://widget/shopping-cart.html",
+        invoking="Loading shopping cart",
+        invoked="Shopping cart loaded",
+        html=_load_widget_html("shopping-cart"),
+        response_text="Here is your shopping cart!",
+    ),
 ]
 
 MIME_TYPE = "text/html+skybridge"
@@ -1103,6 +1112,13 @@ def _tool_description(widget: ElectronicsWidget) -> str:
             "o visualizzare il catalogo completo. Puoi filtrare per categoria usando il parametro 'category' "
             "(es. 'Video & TV', 'tv', 'Informatica', 'Audio'). Restituisce dati strutturati JSON con i prodotti recuperati dal database, "
             "inclusi dettagli come nome, prezzo, descrizione e immagini."
+        ),
+        "shopping-cart": (
+            "Mostra il carrello della spesa con tutti i prodotti che l'utente ha aggiunto tramite i pulsanti 'Aggiungi al carrello' "
+            "nei vari widget (carousel, list, albums, map, search). **USALO QUANDO L'UTENTE CHIEDE DI VEDERE IL CARRELLO, "
+            "MOSTRARE GLI ARTICOLI NEL CARRELLO, O VERIFICARE COSA HA AGGIUNTO**. Il carrello mostra SOLO i prodotti che l'utente "
+            "ha esplicitamente aggiunto cliccando sui pulsanti 'Aggiungi al carrello'. Se il carrello è vuoto, mostra un messaggio appropriato. "
+            "Restituisce un widget HTML interattivo che permette all'utente di vedere gli articoli nel carrello, modificare le quantità, e procedere al checkout."
         ),
     }
     return descriptions.get(widget.identifier, widget.title)
