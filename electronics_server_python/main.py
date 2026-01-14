@@ -1083,7 +1083,7 @@ def _tool_description(widget: ElectronicsWidget) -> str:
             "una mappa interattiva. Restituisce un widget HTML con una mappa cliccabile."
         ),
         "electronics-carousel": (
-            "Mostra un carosello interattivo di prodotti elettronici (massimo 12 prodotti). "
+            "Mostra un carosello interattivo di prodotti elettronici (massimo 6 prodotti). "
             "Usa questo tool quando l'utente vuole sfogliare prodotti in formato carosello o visualizzare "
             "una selezione di prodotti in modo interattivo. Puoi filtrare per categoria usando il parametro 'category' "
             "(es. 'Video & TV', 'tv', 'Informatica', 'Audio'). Restituisce un widget HTML con un carosello navigabile."
@@ -1506,16 +1506,16 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             logger.info(f"Tool {tool_name}: Fetching products from MotherDuck and transforming to places")
             products = await get_products_from_motherduck(category=category)
             
-            # Per electronics-carousel, limita a 12 prodotti se viene passata una categoria
-            # IMPORTANTE: Non aggiungere prodotti di altre categorie se il filtro ne trova meno di 12
-            # Il limite è un MASSIMO, non un obbligo - se ci sono solo 5 prodotti filtrati, mostra solo quelli
+            # Per electronics-carousel, limita a 6 prodotti se viene passata una categoria
+            # IMPORTANTE: Non aggiungere prodotti di altre categorie se il filtro ne trova meno di 6
+            # Il limite è un MASSIMO, non un obbligo - se ci sono solo 3 prodotti filtrati, mostra solo quelli
             if category and tool_name != "electronics-carousel":
                 logger.info(
                     f"Tool {tool_name}: Filtered {len(products)} products for category '{category}'. "
                     "Showing only filtered products (no unrelated products will be added)."
                 )
             if tool_name == "electronics-carousel" and category:
-                MAX_CAROUSEL_PRODUCTS = 12
+                MAX_CAROUSEL_PRODUCTS = 6
                 original_count = len(products)
                 if original_count > MAX_CAROUSEL_PRODUCTS:
                     products = products[:MAX_CAROUSEL_PRODUCTS]

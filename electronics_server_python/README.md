@@ -106,7 +106,7 @@ Logs do not contain sensitive information (no tokens, user data, or PII).
 The server exposes the following tools:
 
 - `electronics-map`: Interactive map of electronics stores
-- `electronics-carousel`: Product carousel widget (max 12 products, shows only requested category)
+- `electronics-carousel`: Product carousel widget (max 6 products, shows only requested category)
 - `electronics-albums`: Product gallery widget
 - `electronics-list`: Product list widget
 - `electronics-shop`: Full electronics shop interface

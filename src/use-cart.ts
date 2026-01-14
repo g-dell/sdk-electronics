@@ -51,38 +51,54 @@ export function useCart() {
     return createDefaultCartState();
   });
 
+  // Ref per tracciare se stiamo aggiornando lo stato localmente (per evitare loop)
+  const isUpdatingLocalRef = React.useRef(false);
+
   // Sincronizza quando widgetState globale cambia (solo per la chiave specifica)
   React.useEffect(() => {
+    // Non sincronizzare se stiamo aggiornando localmente
+    if (isUpdatingLocalRef.current) {
+      return;
+    }
+
     if (widgetStateFromGlobal && Array.isArray(widgetStateFromGlobal.items)) {
-      const currentItems = Array.isArray(cartState?.items) ? cartState.items : [];
-      const globalItems = widgetStateFromGlobal.items;
-      // Solo sincronizza se è diverso
-      if (JSON.stringify(currentItems) !== JSON.stringify(globalItems)) {
-        console.log("[useCart] Syncing from global state:", globalItems.length, "items");
-        setCartState(widgetStateFromGlobal);
-      }
-    } else {
-      // Se la chiave specifica non esiste o è vuota, assicurati che il carrello sia vuoto
-      const currentItems = Array.isArray(cartState?.items) ? cartState.items : [];
-      if (currentItems.length > 0) {
-        // Se abbiamo items locali ma non c'è la chiave globale, potrebbe essere un problema
-        // Ma non resettiamo automaticamente perché potrebbero essere stati aggiunti tramite i pulsanti
-        console.log("[useCart] Local state has items but global state key not found or empty");
-      }
+      setCartState((prevState) => {
+        const currentItems = Array.isArray(prevState?.items) ? prevState.items : [];
+        const globalItems = widgetStateFromGlobal.items;
+        // Solo sincronizza se è diverso
+        if (JSON.stringify(currentItems) !== JSON.stringify(globalItems)) {
+          console.log("[useCart] Syncing from global state:", globalItems.length, "items");
+          return widgetStateFromGlobal;
+        }
+        return prevState;
+      });
     }
   }, [widgetStateFromGlobal]);
 
   // Aggiorna widgetState globale quando cambia cartState
-  const updateGlobalState = React.useCallback((newState: CartWidgetState) => {
-    setCartState(newState);
+  React.useEffect(() => {
     if (typeof window !== "undefined" && window.openai?.setWidgetState) {
       const currentGlobalState = (window.openai.widgetState || {}) as Record<string, unknown>;
-      void window.openai.setWidgetState({
-        ...currentGlobalState,
-        [CART_STATE_KEY]: newState,
-      });
+      // Evita loop infiniti: non aggiornare se lo stato globale è già uguale
+      const currentGlobalCart = currentGlobalState[CART_STATE_KEY] as CartWidgetState | undefined;
+      if (JSON.stringify(currentGlobalCart) !== JSON.stringify(cartState)) {
+        isUpdatingLocalRef.current = true;
+        console.log("[useCart] Updating global widgetState with cart:", cartState.items?.length || 0, "items");
+        void window.openai.setWidgetState({
+          ...currentGlobalState,
+          [CART_STATE_KEY]: cartState,
+        }).then(() => {
+          // Reset il flag dopo che setWidgetState è completato
+          // Usa setTimeout per dare tempo all'evento di propagarsi
+          setTimeout(() => {
+            isUpdatingLocalRef.current = false;
+          }, 100);
+        }).catch(() => {
+          isUpdatingLocalRef.current = false;
+        });
+      }
     }
-  }, []);
+  }, [cartState]);
 
   const cartItems = Array.isArray(cartState?.items) ? cartState.items : [];
   
@@ -222,12 +238,10 @@ export function useCart() {
           return true;
         });
         const newState = { ...baseState, items: deduplicatedItems };
-        updateGlobalState(newState);
         return newState;
       }
 
       const newState = { ...baseState, items };
-      updateGlobalState(newState);
       return newState;
     });
   }
@@ -254,7 +268,6 @@ export function useCart() {
       }
 
       const newState = { ...baseState, items };
-      updateGlobalState(newState);
       return newState;
     });
   }

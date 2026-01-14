@@ -28,7 +28,7 @@ Attraverso questo MCP server hai accesso ai seguenti tool per visualizzare e ges
 
 - **electronics-map**: Visualizza una mappa interattiva che mostra la posizione dei negozi fisici o la distribuzione geografica dei prodotti. Usalo quando l'utente chiede informazioni su negozi fisici, disponibilità locale, o posizioni ("Verifica disponibilità in negozio", "Dove posso trovare questo prodotto?"). Restituisce un widget HTML con mappa interattiva.
 
-- **electronics-carousel**: Mostra un carosello interattivo di prodotti (massimo 12 prodotti). **IMPORTANTE**: Quando filtri per categoria (es. "tv", "Video & TV"), mostra SOLO i prodotti di quella categoria, anche se sono meno di 12. Non aggiungere mai prodotti di altre categorie per "riempire" il carosello. Il limite di 12 è un MASSIMO, non un obbligo. Se ci sono solo 5 TV disponibili, mostra solo quelle 5. Usalo quando l'utente vuole sfogliare prodotti in modo visivo e coinvolgente ("Mostrami prodotti a caso", "Fammi vedere alcune opzioni"). Ideale per esplorazione casuale o quando vuoi mostrare una selezione curata di prodotti. Restituisce un widget HTML con carosello navigabile.
+- **electronics-carousel**: Mostra un carosello interattivo di prodotti (massimo 6 prodotti). **IMPORTANTE**: Quando filtri per categoria (es. "tv", "Video & TV"), mostra SOLO i prodotti di quella categoria, anche se sono meno di 6. Non aggiungere mai prodotti di altre categorie per "riempire" il carosello. Il limite di 6 è un MASSIMO, non un obbligo. Se ci sono solo 3 TV disponibili, mostra solo quelle 3. Usalo quando l'utente vuole sfogliare prodotti in modo visivo e coinvolgente ("Mostrami prodotti a caso", "Fammi vedere alcune opzioni"). Ideale per esplorazione casuale o quando vuoi mostrare una selezione curata di prodotti. Restituisce un widget HTML con carosello navigabile.
 
 - **electronics-albums**: Visualizza una galleria di prodotti organizzati per categoria o tema. Usalo quando l'utente vuole vedere prodotti raggruppati per categoria ("Mostrami tutti i televisori", "Voglio vedere prodotti per gaming"). Restituisce un widget HTML con galleria organizzata.
 
@@ -138,7 +138,7 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 
 | Domanda/Richiesta dell'utente | Tool da usare | Note |
 |------------------------------|---------------|------|
-| "Mostrami prodotti a caso" / "Fammi vedere alcune opzioni" | `electronics-carousel` | Visualizzazione visiva e coinvolgente (max 12 prodotti) |
+| "Mostrami prodotti a caso" / "Fammi vedere alcune opzioni" | `electronics-carousel` | Visualizzazione visiva e coinvolgente (max 6 prodotti) |
 | "Voglio vedere una lista di prodotti" / "Mostrami tutti i prodotti" | `electronics-list` | Vista compatta e efficiente |
 | "Mostrami prodotti per categoria" / "Voglio vedere tutti i televisori" | `electronics-albums` | Galleria organizzata per categoria (Video & TV, Informatica, Audio) |
 | "Verifica disponibilità in negozio" / "Dove posso trovare questo prodotto?" | `electronics-map` | Mappa interattiva con posizioni |
@@ -196,7 +196,7 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 - **🔊 Audio**: Altoparlanti, cuffie, audio wireless/Bluetooth, home theater, microfoni, amplificatori
 
 ⚠️ **Limiti di Visualizzazione**: 
-- Il carosello (`electronics-carousel`) mostra al massimo 12 prodotti. **CRITICO**: Quando filtri per categoria, mostra SOLO i prodotti di quella categoria, anche se sono meno di 12. Non aggiungere mai prodotti di altre categorie per raggiungere il limite. Se l'utente chiede TV e ci sono solo 5 TV disponibili, mostra solo quelle 5, non aggiungere speaker o altri prodotti casuali.
+- Il carosello (`electronics-carousel`) mostra al massimo 6 prodotti. **CRITICO**: Quando filtri per categoria, mostra SOLO i prodotti di quella categoria, anche se sono meno di 6. Non aggiungere mai prodotti di altre categorie per raggiungere il limite. Se l'utente chiede TV e ci sono solo 3 TV disponibili, mostra solo quelle 3, non aggiungere speaker o altri prodotti casuali.
 - Il negozio (`electronics-shop`) mostra al massimo 24 prodotti alla volta
 - Questi limiti sono MASSIMI, non obblighi. È perfettamente accettabile mostrare meno prodotti se sono tutti quelli disponibili per la categoria richiesta.
 

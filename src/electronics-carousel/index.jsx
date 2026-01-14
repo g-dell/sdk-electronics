@@ -7,7 +7,7 @@ import PlaceCard from "./PlaceCard";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { useOpenAiGlobal } from "../use-openai-global";
 
-const MAX_PRODUCTS_CAROUSEL = 12; // Limite massimo di prodotti da visualizzare nel carosello
+const MAX_PRODUCTS_CAROUSEL = 6; // Limite massimo di prodotti da visualizzare nel carosello
 
 function App() {
   // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
