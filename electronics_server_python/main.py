@@ -535,6 +535,25 @@ def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[st
         if not isinstance(rating, (int, float)) or rating <= 0:
             rating = 4.5  # Default se non valido
         
+        # Estrai pro e contro dal database
+        # Il campo 'pro' può essere una stringa separata da virgole o una lista
+        pro_raw = product.get("pro", "")
+        if isinstance(pro_raw, str):
+            pros = [p.strip() for p in pro_raw.split(",") if p.strip()] if pro_raw else []
+        elif isinstance(pro_raw, list):
+            pros = [str(p).strip() for p in pro_raw if str(p).strip()]
+        else:
+            pros = []
+        
+        # Il campo 'contro' può essere una stringa separata da virgole o una lista
+        contro_raw = product.get("contro", "")
+        if isinstance(contro_raw, str):
+            contros = [c.strip() for c in contro_raw.split(",") if c.strip()] if contro_raw else []
+        elif isinstance(contro_raw, list):
+            contros = [str(c).strip() for c in contro_raw if str(c).strip()]
+        else:
+            contros = []
+        
         # Mappa i campi usando i nomi colonne corretti del database
         # IMPORTANTE: Usa product_id (garantito univoco) invece di product.get("id")
         place = {
@@ -546,6 +565,8 @@ def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[st
             "rating": rating,
             "price": price_str,
             "thumbnail": product.get("imageURLs", ""),  # Usa solo imageURLs (non esiste "image" nel DB)
+            "pros": pros,  # Punti di forza del prodotto
+            "cons": contros,  # Punti deboli del prodotto
         }
         
         # Assicurati che thumbnail sia una stringa (se imageURLs è una lista, prendi il primo)
