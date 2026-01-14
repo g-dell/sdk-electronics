@@ -14,7 +14,7 @@ function App() {
   const { addToCart, isInCart } = useCart();
   
   // Gestione quantità per ogni prodotto
-  const [quantities, setQuantities] = React.useState<Record<string, number>>({});
+  const [quantities, setQuantities] = React.useState({});
 
   const handleAddToCart = (place) => {
     const quantity = quantities[place.id] ?? 1;
@@ -29,7 +29,7 @@ function App() {
     });
   };
 
-  const handleQuantityChange = (placeId: string, newQuantity: number) => {
+  const handleQuantityChange = (placeId, newQuantity) => {
     setQuantities((prev) => ({
       ...prev,
       [placeId]: newQuantity,
