@@ -63,6 +63,19 @@ export function useCart() {
       console.log("[useCart] Initializing from global state:", widgetStateFromGlobal.items.length, "items");
       return widgetStateFromGlobal;
     }
+    
+    // Fallback: leggi direttamente da window.openai.widgetState durante l'inizializzazione
+    if (typeof window !== "undefined" && window.openai?.widgetState) {
+      const directState = window.openai.widgetState as Record<string, unknown>;
+      if (directState[CART_STATE_KEY] && typeof directState[CART_STATE_KEY] === "object") {
+        const directCartState = directState[CART_STATE_KEY] as CartWidgetState;
+        if (Array.isArray(directCartState.items)) {
+          console.log("[useCart] Initializing from window.openai.widgetState:", directCartState.items.length, "items");
+          return directCartState;
+        }
+      }
+    }
+    
     // Altrimenti parte sempre vuoto
     console.log("[useCart] Starting with empty cart (no valid global state found)");
     return createDefaultCartState();
@@ -107,8 +120,30 @@ export function useCart() {
     }
   }, [widgetStateFromGlobal]);
 
+  // Ref per tracciare se questo è il primo render (per evitare di sovrascrivere lo stato globale all'inizializzazione)
+  const isFirstRenderRef = React.useRef(true);
+  
   // Aggiorna widgetState globale quando cambia cartState
   React.useEffect(() => {
+    // Al primo render, non aggiornare lo stato globale se è vuoto (potrebbe sovrascrivere uno stato esistente)
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false;
+      const localItems = Array.isArray(cartState?.items) ? cartState.items : [];
+      if (localItems.length === 0) {
+        // Al primo render con carrello vuoto, verifica se lo stato globale ha items
+        if (typeof window !== "undefined" && window.openai?.widgetState) {
+          const currentGlobalState = window.openai.widgetState as Record<string, unknown>;
+          const currentGlobalCart = currentGlobalState[CART_STATE_KEY] as CartWidgetState | undefined;
+          const currentGlobalItems = Array.isArray(currentGlobalCart?.items) ? currentGlobalCart.items : [];
+          if (currentGlobalItems.length > 0) {
+            console.log("[useCart] First render with empty local cart, but global has", currentGlobalItems.length, "items. Syncing from global.");
+            setCartState(currentGlobalCart || createDefaultCartState());
+            return;
+          }
+        }
+      }
+    }
+    
     if (typeof window !== "undefined" && window.openai?.setWidgetState) {
       const currentGlobalState = (window.openai.widgetState || {}) as Record<string, unknown>;
       // Evita loop infiniti: non aggiornare se lo stato globale è già uguale
