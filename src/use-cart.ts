@@ -26,17 +26,34 @@ export function useCart() {
   const widgetStateGlobal = useOpenAiGlobal("widgetState") as Record<string, unknown> | null;
   
   // Estrai SOLO la chiave specifica, ignora tutto il resto
+  // Leggi anche direttamente da window.openai.widgetState come fallback
   const widgetStateFromGlobal = React.useMemo(() => {
+    // Prova prima da useOpenAiGlobal
     if (widgetStateGlobal && typeof widgetStateGlobal === "object") {
       const globalState = widgetStateGlobal as Record<string, unknown>;
       // Leggi SOLO dalla chiave specifica "sharedCartItems", ignora qualsiasi altra chiave
       if (globalState[CART_STATE_KEY] && typeof globalState[CART_STATE_KEY] === "object") {
         const globalCartState = globalState[CART_STATE_KEY] as CartWidgetState;
         if (Array.isArray(globalCartState.items)) {
+          console.log("[useCart] Found global cart state with", globalCartState.items.length, "items");
           return globalCartState;
         }
       }
     }
+    
+    // Fallback: leggi direttamente da window.openai.widgetState
+    if (typeof window !== "undefined" && window.openai?.widgetState) {
+      const directState = window.openai.widgetState as Record<string, unknown>;
+      if (directState[CART_STATE_KEY] && typeof directState[CART_STATE_KEY] === "object") {
+        const directCartState = directState[CART_STATE_KEY] as CartWidgetState;
+        if (Array.isArray(directCartState.items)) {
+          console.log("[useCart] Found global cart state from window.openai.widgetState with", directCartState.items.length, "items");
+          return directCartState;
+        }
+      }
+    }
+    
+    console.log("[useCart] No valid global cart state found in widgetState");
     return null;
   }, [widgetStateGlobal]);
 
@@ -66,13 +83,24 @@ export function useCart() {
       setCartState((prevState) => {
         const currentItems = Array.isArray(prevState?.items) ? prevState.items : [];
         const globalItems = widgetStateFromGlobal.items;
-        // Solo sincronizza se è diverso
+        // Solo sincronizza se è diverso E se lo stato globale ha più items (non sovrascrivere con uno stato vuoto)
         const currentItemsStr = JSON.stringify(currentItems);
         const globalItemsStr = JSON.stringify(globalItems);
         if (currentItemsStr !== globalItemsStr) {
-          console.log("[useCart] Syncing from global state:", globalItems.length, "items");
-          console.log("[useCart] Current items:", currentItems.length, "Global items:", globalItems.length);
-          return widgetStateFromGlobal;
+          // IMPORTANTE: Se lo stato globale ha items e quello locale è vuoto, usa sempre quello globale
+          // Se lo stato locale ha items e quello globale è vuoto, mantieni quello locale (non sovrascrivere)
+          if (globalItems.length > 0 && currentItems.length === 0) {
+            console.log("[useCart] Syncing from global state (global has items, local is empty):", globalItems.length, "items");
+            return widgetStateFromGlobal;
+          } else if (globalItems.length === 0 && currentItems.length > 0) {
+            console.log("[useCart] Keeping local state (local has items, global is empty):", currentItems.length, "items");
+            return prevState;
+          } else {
+            // Entrambi hanno items o entrambi sono vuoti - sincronizza solo se diverso
+            console.log("[useCart] Syncing from global state:", globalItems.length, "items");
+            console.log("[useCart] Current items:", currentItems.length, "Global items:", globalItems.length);
+            return widgetStateFromGlobal;
+          }
         }
         return prevState;
       });
@@ -85,7 +113,29 @@ export function useCart() {
       const currentGlobalState = (window.openai.widgetState || {}) as Record<string, unknown>;
       // Evita loop infiniti: non aggiornare se lo stato globale è già uguale
       const currentGlobalCart = currentGlobalState[CART_STATE_KEY] as CartWidgetState | undefined;
-      if (JSON.stringify(currentGlobalCart) !== JSON.stringify(cartState)) {
+      const currentGlobalItems = Array.isArray(currentGlobalCart?.items) ? currentGlobalCart.items : [];
+      const localItems = Array.isArray(cartState?.items) ? cartState.items : [];
+      
+      // IMPORTANTE: Non sovrascrivere uno stato globale con items con uno stato locale vuoto
+      // Questo previene che un nuovo widget che parte vuoto cancelli il carrello esistente
+      if (currentGlobalItems.length > 0 && localItems.length === 0) {
+        console.log("[useCart] Preventing overwrite: global has", currentGlobalItems.length, "items, local is empty. Keeping global state.");
+        // Aggiorna lo stato locale con quello globale invece di sovrascrivere
+        setCartState((prev) => {
+          const prevItems = Array.isArray(prev?.items) ? prev.items : [];
+          if (JSON.stringify(prevItems) !== JSON.stringify(currentGlobalItems)) {
+            console.log("[useCart] Updating local state from global to prevent data loss");
+            return currentGlobalCart || createDefaultCartState();
+          }
+          return prev;
+        });
+        return;
+      }
+      
+      // Solo aggiorna se lo stato è effettivamente cambiato
+      const currentGlobalCartStr = JSON.stringify(currentGlobalCart);
+      const cartStateStr = JSON.stringify(cartState);
+      if (currentGlobalCartStr !== cartStateStr) {
         isUpdatingLocalRef.current = true;
         console.log("[useCart] Updating global widgetState with cart:", cartState.items?.length || 0, "items");
         const newState = {
@@ -96,10 +146,11 @@ export function useCart() {
         void window.openai.setWidgetState(newState).then(() => {
           console.log("[useCart] setWidgetState completed successfully");
           // Reset il flag dopo che setWidgetState è completato
-          // Usa setTimeout per dare tempo all'evento di propagarsi
+          // Usa setTimeout per dare tempo all'evento di propagarsi e agli altri widget di reagire
           setTimeout(() => {
             isUpdatingLocalRef.current = false;
-          }, 100);
+            console.log("[useCart] Reset isUpdatingLocalRef flag");
+          }, 200);
         }).catch((error) => {
           console.error("[useCart] Error setting widgetState:", error);
           isUpdatingLocalRef.current = false;
