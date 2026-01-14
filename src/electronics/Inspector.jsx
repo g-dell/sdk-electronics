@@ -5,10 +5,15 @@ import { Button } from "@openai/apps-sdk-ui/components/Button";
 import SafeImage from "./SafeImage";
 import { useProxyBaseUrl } from "../use-proxy-base-url";
 import { useCart } from "../use-cart";
+import QuantitySelector from "../utils/QuantitySelector";
 
 export default function Inspector({ place, onClose }) {
   const proxyBaseUrl = useProxyBaseUrl();
   const { addToCart, isInCart } = useCart();
+  const [quantity, setQuantity] = React.useState(1);
+
+  // Stock disponibile (default: 10 se non specificato)
+  const maxStock = place?.stock ?? 10;
 
   const handleAddToCart = () => {
     addToCart({
@@ -17,6 +22,8 @@ export default function Inspector({ place, onClose }) {
       price: place.price,
       description: place.description,
       thumbnail: place.thumbnail,
+      stock: maxStock,
+      quantity: quantity,
     });
   };
   
@@ -60,26 +67,44 @@ export default function Inspector({ place, onClose }) {
               {place.price ? <span>· {place.price}</span> : null}
               <span>· San Francisco</span>
             </div>
-            <div className="mt-3 flex flex-row items-center gap-3 font-medium">
-              <Button 
-                color="primary" 
-                variant="solid" 
-                size="sm"
-                onClick={handleAddToCart}
-                disabled={isInCart(place.id)}
-                className="flex-1"
-              >
-                <ShoppingCart className="h-4 w-4 mr-2" />
-                {isInCart(place.id) ? "Nel carrello" : "Aggiungi al carrello"}
-              </Button>
-              <Button
-                color="primary"
-                variant="outline"
-                size="sm"
-                className="border-[#F46C21]/50 text-[#F46C21]"
-              >
-                Contact
-              </Button>
+            <div className="mt-3 flex flex-col gap-2">
+              {!isInCart(place.id) && maxStock > 0 && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-black/70">Quantità:</span>
+                  <QuantitySelector
+                    quantity={quantity}
+                    onQuantityChange={setQuantity}
+                    maxQuantity={maxStock}
+                    minQuantity={1}
+                    size="sm"
+                  />
+                </div>
+              )}
+              <div className="flex flex-row items-center gap-3 font-medium">
+                <Button 
+                  color="primary" 
+                  variant="solid" 
+                  size="sm"
+                  onClick={handleAddToCart}
+                  disabled={isInCart(place.id) || maxStock === 0}
+                  className="flex-1"
+                >
+                  <ShoppingCart className="h-4 w-4 mr-2" />
+                  {isInCart(place.id) 
+                    ? "Nel carrello" 
+                    : maxStock === 0 
+                    ? "Non disponibile" 
+                    : "Aggiungi al carrello"}
+                </Button>
+                <Button
+                  color="primary"
+                  variant="outline"
+                  size="sm"
+                  className="border-[#F46C21]/50 text-[#F46C21]"
+                >
+                  Contact
+                </Button>
+              </div>
             </div>
             <div className="text-sm mt-5">
               {place.description} Enjoy a slice at one of SF's favorites. Fresh

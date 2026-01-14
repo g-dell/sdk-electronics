@@ -5,21 +5,35 @@ import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { Image } from "@openai/apps-sdk-ui/components/Image";
 import { useOpenAiGlobal } from "../use-openai-global";
 import { useCart } from "../use-cart";
+import QuantitySelector from "../utils/QuantitySelector";
 
 function App() {
   // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
   const toolOutput = useOpenAiGlobal("toolOutput");
   const places = toolOutput?.places || [];
   const { addToCart, isInCart } = useCart();
+  
+  // Gestione quantità per ogni prodotto
+  const [quantities, setQuantities] = React.useState<Record<string, number>>({});
 
   const handleAddToCart = (place) => {
+    const quantity = quantities[place.id] ?? 1;
     addToCart({
       id: place.id,
       name: place.name,
       price: place.price,
       description: place.description,
       thumbnail: place.thumbnail,
+      stock: place.stock,
+      quantity: quantity,
     });
+  };
+
+  const handleQuantityChange = (placeId: string, newQuantity: number) => {
+    setQuantities((prev) => ({
+      ...prev,
+      [placeId]: newQuantity,
+    }));
   };
 
   return (
@@ -96,15 +110,25 @@ function App() {
                 <div className="hidden sm:block text-end py-2 px-3 text-sm text-black/60 whitespace-nowrap flex-auto">
                   {place.city || "–"}
                 </div>
-                <div className="py-2 whitespace-nowrap flex justify-end">
+                <div className="py-2 whitespace-nowrap flex items-center justify-end gap-2">
+                  {!isInCart(place.id) && (place.stock ?? 10) > 0 && (
+                    <QuantitySelector
+                      quantity={quantities[place.id] ?? 1}
+                      onQuantityChange={(qty) => handleQuantityChange(place.id, qty)}
+                      maxQuantity={place.stock ?? 10}
+                      minQuantity={1}
+                      size="sm"
+                      className="hidden sm:flex"
+                    />
+                  )}
                   <Button
-                    aria-label={isInCart(place.id) ? `${place.name} già nel carrello` : `Aggiungi ${place.name} al carrello`}
+                    aria-label={isInCart(place.id) ? `${place.name} già nel carrello` : (place.stock ?? 10) === 0 ? `${place.name} non disponibile` : `Aggiungi ${place.name} al carrello`}
                     color={isInCart(place.id) ? "primary" : "secondary"}
                     variant={isInCart(place.id) ? "soft" : "ghost"}
                     size="sm"
                     uniform
                     onClick={() => handleAddToCart(place)}
-                    disabled={isInCart(place.id)}
+                    disabled={isInCart(place.id) || (place.stock ?? 10) === 0}
                   >
                     {isInCart(place.id) ? (
                       <ShoppingCart strokeWidth={1.5} className="h-5 w-5" />

@@ -6,26 +6,35 @@ import SafeImage from "../electronics/SafeImage";
 import { useProxyBaseUrl } from "../use-proxy-base-url";
 import { useCart } from "../use-cart";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
+import QuantitySelector from "../utils/QuantitySelector";
 
 export default function FullscreenViewer({ album }) {
   const maxHeight = useMaxHeight() ?? undefined;
   const [index, setIndex] = React.useState(0);
+  const [quantity, setQuantity] = React.useState(1);
   const proxyBaseUrl = useProxyBaseUrl();
   const { addToCart, isInCart } = useCart();
 
   React.useEffect(() => {
     setIndex(0);
+    setQuantity(1); // Reset quantità quando cambia l'album
   }, [album?.id]);
 
   const photo = album?.photos?.[index];
+  // Stock disponibile (default: 10 se non specificato)
+  // Nota: gli album potrebbero non avere stock, quindi usiamo un default
+  const maxStock = photo?.stock ?? 10;
+  const photoId = photo?.id || `album-${album.id}-photo-${index}`;
 
   const handleAddToCart = () => {
     if (photo) {
       addToCart({
-        id: photo.id || `album-${album.id}-photo-${index}`,
+        id: photoId,
         name: photo.title || album.title,
         description: album.title,
         thumbnail: photo.url,
+        stock: maxStock,
+        quantity: quantity,
       });
     }
   };
@@ -55,17 +64,31 @@ export default function FullscreenViewer({ album }) {
                   proxyBaseUrl={proxyBaseUrl}
                 />
                 {/* Add to cart button */}
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2">
+                  {!isInCart(photoId) && maxStock > 0 && (
+                    <div className="flex items-center justify-center gap-2 bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2">
+                      <span className="text-sm text-black/70">Quantità:</span>
+                      <QuantitySelector
+                        quantity={quantity}
+                        onQuantityChange={setQuantity}
+                        maxQuantity={maxStock}
+                        minQuantity={1}
+                        size="sm"
+                      />
+                    </div>
+                  )}
                   <Button
                     color="primary"
                     variant="solid"
                     size="md"
                     onClick={handleAddToCart}
-                    disabled={isInCart(photo.id || `album-${album.id}-photo-${index}`)}
+                    disabled={isInCart(photoId) || maxStock === 0}
                   >
                     <ShoppingCart className="h-4 w-4 mr-2" />
-                    {isInCart(photo.id || `album-${album.id}-photo-${index}`)
+                    {isInCart(photoId)
                       ? "Nel carrello"
+                      : maxStock === 0
+                      ? "Non disponibile"
                       : "Aggiungi al carrello"}
                   </Button>
                 </div>

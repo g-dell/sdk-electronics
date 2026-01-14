@@ -4,12 +4,17 @@ import { Button } from "@openai/apps-sdk-ui/components/Button";
 import SafeImage from "../electronics/SafeImage";
 import { useProxyBaseUrl } from "../use-proxy-base-url";
 import { useCart } from "../use-cart";
+import QuantitySelector from "../utils/QuantitySelector";
 
 function PlaceCard({ place }) {
   const proxyBaseUrl = useProxyBaseUrl();
   const { addToCart, isInCart } = useCart();
+  const [quantity, setQuantity] = React.useState(1);
   
   if (!place) return null;
+
+  // Stock disponibile (default: 10 se non specificato)
+  const maxStock = place.stock ?? 10;
 
   // Usa useCallback per evitare che l'handler venga ricreato ad ogni render
   // e per assicurarsi che ogni PlaceCard abbia il proprio handler specifico
@@ -26,18 +31,21 @@ function PlaceCard({ place }) {
     console.log("[PlaceCard] Adding product to cart:", {
       id: place.id,
       name: place.name,
+      quantity: quantity,
       cardId: place.id, // Per verificare che sia il prodotto corretto
     });
     
-    // Aggiungi SOLO questo prodotto specifico
+    // Aggiungi SOLO questo prodotto specifico con la quantità selezionata
     addToCart({
       id: place.id,
       name: place.name,
       price: place.price,
       description: place.description,
       thumbnail: place.thumbnail,
+      stock: maxStock,
+      quantity: quantity,
     });
-  }, [place.id, place.name, place.price, place.description, place.thumbnail, addToCart]);
+  }, [place.id, place.name, place.price, place.description, place.thumbnail, addToCart, quantity, maxStock]);
 
   const inCart = isInCart(place.id);
 
@@ -66,13 +74,25 @@ function PlaceCard({ place }) {
             {place.description}
           </div>
         ) : null}
-        <div className="mt-5 flex gap-2">
+        <div className="mt-5 flex flex-col gap-2">
+          {!inCart && maxStock > 0 && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-black/60">Quantità:</span>
+              <QuantitySelector
+                quantity={quantity}
+                onQuantityChange={setQuantity}
+                maxQuantity={maxStock}
+                minQuantity={1}
+                size="sm"
+              />
+            </div>
+          )}
           <Button 
             color="primary" 
             size="sm" 
             variant="solid"
             onClick={handleAddToCart}
-            disabled={inCart}
+            disabled={inCart || maxStock === 0}
             className="flex-1"
           >
             {inCart ? (
@@ -80,6 +100,8 @@ function PlaceCard({ place }) {
                 <ShoppingCart className="h-4 w-4 mr-1" />
                 Nel carrello
               </>
+            ) : maxStock === 0 ? (
+              "Non disponibile"
             ) : (
               <>
                 <ShoppingCart className="h-4 w-4 mr-1" />

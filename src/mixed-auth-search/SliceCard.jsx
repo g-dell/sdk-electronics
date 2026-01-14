@@ -2,9 +2,14 @@ import React from "react";
 import { MapPin, Star, ShoppingCart } from "lucide-react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { useCart } from "../use-cart";
+import QuantitySelector from "../utils/QuantitySelector";
 
 function SliceCard({ place, index }) {
   const { addToCart, isInCart } = useCart();
+  const [quantity, setQuantity] = React.useState(1);
+
+  // Stock disponibile (default: 10 se non specificato)
+  const maxStock = place?.stock ?? 10;
 
   const handleAddToCart = (e) => {
     e.stopPropagation();
@@ -14,6 +19,8 @@ function SliceCard({ place, index }) {
       price: place.price,
       description: place.description,
       thumbnail: place.thumbnail,
+      stock: maxStock,
+      quantity: quantity,
     });
   };
 
@@ -55,17 +62,29 @@ function SliceCard({ place, index }) {
             <span>{place.city}</span>
           </div>
         </div>
-        <div className="mt-2">
+        <div className="mt-2 flex flex-col gap-2">
+          {!inCart && maxStock > 0 && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-black/60">Quantità:</span>
+              <QuantitySelector
+                quantity={quantity}
+                onQuantityChange={setQuantity}
+                maxQuantity={maxStock}
+                minQuantity={1}
+                size="sm"
+              />
+            </div>
+          )}
           <Button
             color={inCart ? "primary" : "secondary"}
             variant={inCart ? "soft" : "solid"}
             size="sm"
             onClick={handleAddToCart}
-            disabled={inCart}
+            disabled={inCart || maxStock === 0}
             className="w-full"
           >
             <ShoppingCart className="h-4 w-4 mr-2" />
-            {inCart ? "Nel carrello" : "Aggiungi al carrello"}
+            {inCart ? "Nel carrello" : maxStock === 0 ? "Non disponibile" : "Aggiungi al carrello"}
           </Button>
         </div>
       </div>

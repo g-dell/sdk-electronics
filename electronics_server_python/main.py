@@ -17,6 +17,7 @@ __version__ = "1.0.0"
 import os
 import logging
 import duckdb
+import re
 from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
@@ -350,6 +351,136 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
     return filtered_products
 
 
+def rank_products_by_criteria(
+    products: List[Dict[str, Any]], 
+    criteria: Dict[str, Any] = None
+) -> List[Dict[str, Any]]:
+    """
+    Ordina i prodotti basandosi sui criteri di ricerca del cliente.
+    
+    La funzione ordina i prodotti in modo che:
+    1. Corrispondenze esatte vengano per prime (es. 45 pollici se richiesto)
+    2. Prodotti simili vengano dopo (es. 50 pollici con prezzo simile)
+    3. Altri prodotti vengano alla fine
+    
+    Args:
+        products: Lista di prodotti da ordinare
+        criteria: Dizionario con criteri di ricerca opzionali:
+            - size_inches: Dimensione richiesta in pollici (es. 45, 50)
+            - max_price: Prezzo massimo desiderato
+            - min_price: Prezzo minimo desiderato
+            - target_price: Prezzo target (per trovare prodotti con prezzo simile)
+            - keywords: Lista di parole chiave da cercare nel nome/descrizione
+    
+    Returns:
+        Lista di prodotti ordinata per rilevanza rispetto ai criteri
+    """
+    if not products or not criteria:
+        return products
+    
+    def extract_size_from_name(name: str) -> int | None:
+        """Estrae la dimensione in pollici dal nome del prodotto."""
+        if not name:
+            return None
+        # Cerca pattern come "45 inch", "45\"", "45 pollici", "45in", "45-inch"
+        patterns = [
+            r'(\d+)\s*(?:inch|pollici|"|in)(?:es)?',
+            r'(\d+)[\s-]*(?:inch|pollici|"|in)',
+            r'(\d+)\s*(?:inch|pollici)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, name, re.IGNORECASE)
+            if match:
+                try:
+                    return int(match.group(1))
+                except ValueError:
+                    continue
+        return None
+    
+    def get_price(product: Dict[str, Any]) -> float:
+        """Estrae il prezzo dal prodotto."""
+        price_num = 0
+        if "prices.amountMax" in product:
+            price_num = product.get("prices.amountMax", 0)
+        elif isinstance(product.get("prices"), dict):
+            price_num = product.get("prices", {}).get("amountMax", 0)
+        return float(price_num) if price_num else 0.0
+    
+    def calculate_relevance_score(product: Dict[str, Any]) -> tuple:
+        """
+        Calcola uno score di rilevanza per il prodotto.
+        Restituisce una tupla (score, ...) per ordinamento stabile.
+        Score più basso = più rilevante (viene prima).
+        """
+        score = 1000  # Score base (bassa priorità)
+        
+        # 1. Corrispondenza esatta per dimensione (priorità massima)
+        target_size = criteria.get("size_inches")
+        if target_size:
+            product_size = extract_size_from_name(product.get("name", ""))
+            if product_size:
+                size_diff = abs(product_size - target_size)
+                if size_diff == 0:
+                    # Corrispondenza esatta: score molto basso
+                    score = 0
+                elif size_diff <= 5:
+                    # Dimensione simile (entro 5 pollici): score basso
+                    score = 10 + size_diff
+                else:
+                    # Dimensione molto diversa: score alto
+                    score = 50 + size_diff
+        
+        # 2. Corrispondenza per prezzo target (priorità alta)
+        target_price = criteria.get("target_price")
+        if target_price:
+            product_price = get_price(product)
+            if product_price > 0:
+                price_diff = abs(product_price - target_price)
+                price_diff_percent = (price_diff / target_price) * 100 if target_price > 0 else 100
+                # Se c'è già uno score per dimensione, aggiungi solo un piccolo bonus
+                # Altrimenti, usa il prezzo come criterio principale
+                if score >= 1000:
+                    # Nessuna corrispondenza dimensione, usa prezzo come criterio principale
+                    if price_diff_percent <= 10:
+                        score = 20  # Prezzo molto simile (entro 10%)
+                    elif price_diff_percent <= 25:
+                        score = 30  # Prezzo simile (entro 25%)
+                    else:
+                        score = 40 + price_diff_percent
+                else:
+                    # C'è già uno score per dimensione, aggiungi bonus per prezzo simile
+                    if price_diff_percent <= 25:
+                        score += 1  # Bonus per prezzo simile
+        
+        # 3. Filtri prezzo min/max
+        max_price = criteria.get("max_price")
+        min_price = criteria.get("min_price")
+        product_price = get_price(product)
+        if max_price and product_price > max_price:
+            score += 100  # Penalità se supera il prezzo massimo
+        if min_price and product_price < min_price:
+            score += 50  # Piccola penalità se sotto il prezzo minimo
+        
+        # 4. Corrispondenza per parole chiave
+        keywords = criteria.get("keywords", [])
+        if keywords:
+            name_lower = (product.get("name", "") or "").lower()
+            desc_lower = (product.get("descrizione_prodotto", "") or "").lower()
+            text = f"{name_lower} {desc_lower}"
+            matched_keywords = sum(1 for kw in keywords if kw.lower() in text)
+            if matched_keywords > 0:
+                # Bonus per corrispondenza keyword (riduce lo score)
+                score = max(0, score - (matched_keywords * 5))
+        
+        # Restituisci tupla per ordinamento stabile (score, prezzo, nome)
+        return (score, -get_price(product), product.get("name", ""))
+    
+    # Ordina i prodotti per rilevanza
+    sorted_products = sorted(products, key=calculate_relevance_score)
+    
+    return sorted_products
+
+
 async def get_products_from_motherduck(category: str = None):
     """
     Recupera i prodotti elettronici dal database MotherDuck, opzionalmente filtrati per categoria.
@@ -413,19 +544,25 @@ async def get_products_from_motherduck(category: str = None):
         return []
 
 
-def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def transform_products_to_places(
+    products: List[Dict[str, Any]], 
+    criteria: Dict[str, Any] = None
+) -> List[Dict[str, Any]]:
     """
     Trasforma prodotti dal database MotherDuck in formato 'places' per i widget UI.
     
     I widget carousel/map/list/albums si aspettano una struttura 'places' con:
-    - id, name, coords (lat, lon), description, city, rating, price (stringa), thumbnail
+    - id, name, coords (lat, lon), description, city, rating, price (stringa), thumbnail, stock
     
     I prodotti dal database prodotti_xeel_shop hanno:
     - id, name, prices.amountMax/prices.amountMin, descrizione_prodotto, imageURLs, 
-      voto_prodotto_1_5, categories, primaryCategories
+      voto_prodotto_1_5, categories, primaryCategories, stock
     
     Questa funzione mappa i campi dal database e genera valori default per campi mancanti 
     (coords, city - generati automaticamente).
+    
+    I prodotti vengono ordinati in base ai criteri specificati (dimensioni, prezzo, ecc.)
+    per mostrare prima le corrispondenze esatte e poi i prodotti simili.
     
     Mapping colonne DB -> places:
     - id -> id
@@ -434,16 +571,22 @@ def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[st
     - descrizione_prodotto -> description
     - imageURLs -> thumbnail
     - voto_prodotto_1_5 -> rating (con fallback a 4.5)
+    - stock -> stock (numero prodotti disponibili)
     - coords, city -> generati automaticamente (default San Francisco)
     
     Args:
         products: Lista di prodotti dal database (dizionari Python)
+        criteria: Dizionario opzionale con criteri di ordinamento (size_inches, target_price, ecc.)
     
     Returns:
-        Lista di 'places' nel formato atteso dai widget
+        Lista di 'places' nel formato atteso dai widget, ordinata per rilevanza
     """
     if not products:
         return []
+    
+    # Ordina i prodotti in base ai criteri prima di trasformarli
+    if criteria:
+        products = rank_products_by_criteria(products, criteria)
     
     # Coordinate di default per San Francisco (dove sono i place attuali in markers.json)
     # Distribuite in diverse zone della città per varietà visiva
@@ -554,6 +697,18 @@ def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[st
         else:
             contros = []
         
+        # Ottieni lo stock dal database (colonna 'stock')
+        stock = product.get("stock", 0)
+        if isinstance(stock, (int, float)):
+            stock = int(stock)
+        elif isinstance(stock, str):
+            try:
+                stock = int(float(stock))
+            except (ValueError, TypeError):
+                stock = 0
+        else:
+            stock = 0
+        
         # Mappa i campi usando i nomi colonne corretti del database
         # IMPORTANTE: Usa product_id (garantito univoco) invece di product.get("id")
         place = {
@@ -567,6 +722,7 @@ def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[st
             "thumbnail": product.get("imageURLs", ""),  # Usa solo imageURLs (non esiste "image" nel DB)
             "pros": pros,  # Punti di forza del prodotto
             "cons": contros,  # Punti deboli del prodotto
+            "stock": stock,  # Numero di prodotti disponibili in magazzino
         }
         
         # Assicurati che thumbnail sia una stringa (se imageURLs è una lista, prendi il primo)
@@ -580,7 +736,10 @@ def transform_products_to_places(products: List[Dict[str, Any]]) -> List[Dict[st
     return places
 
 
-def transform_products_to_albums(products: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def transform_products_to_albums(
+    products: List[Dict[str, Any]], 
+    criteria: Dict[str, Any] = None
+) -> List[Dict[str, Any]]:
     """
     Trasforma prodotti dal database MotherDuck in formato 'albums' per il widget albums.
     
@@ -595,14 +754,22 @@ def transform_products_to_albums(products: List[Dict[str, Any]]) -> List[Dict[st
     - imageURLs per le immagini
     - name per il titolo
     
+    I prodotti vengono ordinati in base ai criteri specificati prima di essere raggruppati,
+    in modo che all'interno di ogni album i prodotti più rilevanti vengano mostrati per primi.
+    
     Args:
         products: Lista di prodotti dal database (dizionari Python)
+        criteria: Dizionario opzionale con criteri di ordinamento (size_inches, target_price, ecc.)
     
     Returns:
-        Lista di 'albums' nel formato atteso dal widget albums
+        Lista di 'albums' nel formato atteso dal widget albums, con prodotti ordinati per rilevanza
     """
     if not products:
         return []
+    
+    # Ordina i prodotti in base ai criteri prima di raggrupparli
+    if criteria:
+        products = rank_products_by_criteria(products, criteria)
     
     # Raggruppa prodotti per tag principale (primo tag più comune)
     # Oppure crea album tematici
@@ -1079,6 +1246,27 @@ CATEGORY_FILTER_INPUT_SCHEMA: Dict[str, Any] = {
             "type": "string",
             "description": "Categoria opzionale per filtrare i prodotti (es. 'Video & TV', 'tv', 'Informatica', 'Audio'). Se non specificata, vengono restituiti tutti i prodotti.",
         },
+        "size_inches": {
+            "type": "integer",
+            "description": "Dimensione richiesta in pollici (es. 45, 50, 55). Usa questo parametro quando il cliente specifica una dimensione specifica (es. 'TV da 45 pollici'). I prodotti con dimensione esatta verranno mostrati per primi, seguiti da prodotti con dimensioni simili.",
+        },
+        "target_price": {
+            "type": "number",
+            "description": "Prezzo target desiderato dal cliente. I prodotti con prezzo simile verranno mostrati prima. Usa questo quando il cliente specifica un budget o un prezzo desiderato.",
+        },
+        "max_price": {
+            "type": "number",
+            "description": "Prezzo massimo che il cliente è disposto a spendere. I prodotti sopra questo prezzo avranno priorità più bassa.",
+        },
+        "min_price": {
+            "type": "number",
+            "description": "Prezzo minimo desiderato. I prodotti sotto questo prezzo avranno priorità più bassa.",
+        },
+        "keywords": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Lista di parole chiave da cercare nel nome o descrizione del prodotto. I prodotti che corrispondono a più parole chiave avranno priorità più alta.",
+        },
     },
     "required": [],
     "additionalProperties": False,
@@ -1446,10 +1634,34 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         )
 
     try:
-        # Estrai il parametro category dagli argomenti (se presente)
+        # Estrai i parametri dagli argomenti
         category = arguments.get("category") if arguments else None
+        size_inches = arguments.get("size_inches") if arguments else None
+        target_price = arguments.get("target_price") if arguments else None
+        max_price = arguments.get("max_price") if arguments else None
+        min_price = arguments.get("min_price") if arguments else None
+        keywords = arguments.get("keywords") if arguments else None
+        
+        # Costruisci il dizionario dei criteri di ordinamento
+        criteria = {}
+        if size_inches is not None:
+            criteria["size_inches"] = int(size_inches) if isinstance(size_inches, (int, float, str)) else None
+        if target_price is not None:
+            criteria["target_price"] = float(target_price) if isinstance(target_price, (int, float, str)) else None
+        if max_price is not None:
+            criteria["max_price"] = float(max_price) if isinstance(max_price, (int, float, str)) else None
+        if min_price is not None:
+            criteria["min_price"] = float(min_price) if isinstance(min_price, (int, float, str)) else None
+        if keywords:
+            criteria["keywords"] = keywords if isinstance(keywords, list) else [keywords] if keywords else []
+        
+        # Rimuovi valori None dal dizionario criteri
+        criteria = {k: v for k, v in criteria.items() if v is not None and v != []}
+        
         if category:
             logger.info(f"Tool {tool_name}: Category filter requested: '{category}'")
+        if criteria:
+            logger.info(f"Tool {tool_name}: Ranking criteria: {criteria}")
         
         if tool_name == "product-list":
             # Tool che richiede accesso a MotherDuck
@@ -1491,7 +1703,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     f"Tool {tool_name}: Filtered {len(products)} products for category '{category}'. "
                     "Showing only filtered products (no unrelated products will be added)."
                 )
-            albums = transform_products_to_albums(products)
+            albums = transform_products_to_albums(products, criteria=criteria if criteria else None)
             album_count = len(albums) if albums else 0
             if album_count == 0:
                 # Se la lista è vuota, potrebbe essere dovuto a:
@@ -1550,7 +1762,8 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                         f"(showing all {original_count}, no need to add unrelated products)"
                     )
             
-            places = transform_products_to_places(products)
+            # Trasforma i prodotti in places, applicando l'ordinamento basato sui criteri
+            places = transform_products_to_places(products, criteria=criteria if criteria else None)
             place_count = len(places) if places else 0
             if place_count == 0:
                 # Se la lista è vuota, potrebbe essere dovuto a:

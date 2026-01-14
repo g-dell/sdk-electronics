@@ -129,6 +129,8 @@ export function useCart() {
     description?: string;
     image?: string;
     thumbnail?: string;
+    stock?: number;
+    quantity?: number; // Quantità da aggiungere (default: 1)
   }) {
     if (!product.id || !product.name) {
       console.warn("Cannot add product to cart: missing id or name", product);
@@ -150,10 +152,14 @@ export function useCart() {
     
     lastAddTimeRef.current.set(product.id, now);
 
+    // Quantità da aggiungere (default: 1)
+    const quantityToAdd = product.quantity ?? 1;
+    
     // Log per debug
     console.log("[useCart] Adding product to cart:", {
       id: product.id,
       name: product.name,
+      quantity: quantityToAdd,
       timestamp: new Date().toISOString(),
     });
 
@@ -199,10 +205,11 @@ export function useCart() {
         const current = items[existingIndex];
         items[existingIndex] = {
           ...current,
-          quantity: (current.quantity ?? 0) + 1,
+          quantity: (current.quantity ?? 0) + quantityToAdd,
+          stock: product.stock ?? current.stock, // Aggiorna anche lo stock se fornito
         };
         console.log(
-          `[useCart] Product "${product.name}" (${product.id}) already in cart, incrementing quantity to ${items[existingIndex].quantity}`
+          `[useCart] Product "${product.name}" (${product.id}) already in cart, incrementing quantity by ${quantityToAdd} to ${items[existingIndex].quantity}`
         );
       } else {
         // Nuovo prodotto: aggiungi SOLO questo prodotto al carrello
@@ -211,12 +218,13 @@ export function useCart() {
           name: product.name,
           price: price,
           description: product.description || "",
-          quantity: 1,
+          quantity: quantityToAdd,
           image: imageUrl,
+          stock: product.stock, // Salva lo stock se fornito
         };
         items.push(newItem);
         console.log(
-          `[useCart] Added new product "${product.name}" (${product.id}) to cart. Total items: ${items.length}`
+          `[useCart] Added new product "${product.name}" (${product.id}) to cart with quantity ${quantityToAdd}. Total items: ${items.length}`
         );
       }
 
