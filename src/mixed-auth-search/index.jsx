@@ -80,16 +80,6 @@ function App() {
             ))}
           </div>
         </div>
-      </div>
-      <AnimatePresence>
-        {selectedPlace && (
-          <ProductDetails
-            place={selectedPlace}
-            onClose={() => setSelectedPlace(null)}
-            position="modal"
-          />
-        )}
-      </AnimatePresence>
         <div
           aria-hidden
           className={
@@ -129,6 +119,15 @@ function App() {
           </button>
         )}
       </div>
+      <AnimatePresence>
+        {selectedPlace && (
+          <ProductDetails
+            place={selectedPlace}
+            onClose={() => setSelectedPlace(null)}
+            position="modal"
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
