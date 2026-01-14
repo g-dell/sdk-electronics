@@ -5,35 +5,24 @@ import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { Image } from "@openai/apps-sdk-ui/components/Image";
 import { useOpenAiGlobal } from "../use-openai-global";
 import { useCart } from "../use-cart";
-import QuantitySelector from "../utils/QuantitySelector";
+import { AnimatePresence } from "framer-motion";
+import ProductDetails from "../utils/ProductDetails";
 
 function App() {
   // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
   const toolOutput = useOpenAiGlobal("toolOutput");
   const places = toolOutput?.places || [];
   const { addToCart, isInCart } = useCart();
-  
-  // Gestione quantità per ogni prodotto
-  const [quantities, setQuantities] = React.useState({});
+  const [selectedPlace, setSelectedPlace] = React.useState(null);
 
   const handleAddToCart = (place) => {
-    const quantity = quantities[place.id] ?? 1;
     addToCart({
       id: place.id,
       name: place.name,
       price: place.price,
       description: place.description,
       thumbnail: place.thumbnail,
-      stock: place.stock,
-      quantity: quantity,
     });
-  };
-
-  const handleQuantityChange = (placeId, newQuantity) => {
-    setQuantities((prev) => ({
-      ...prev,
-      [placeId]: newQuantity,
-    }));
   };
 
   return (
@@ -65,7 +54,14 @@ function App() {
           {places.slice(0, 7).map((place, i) => (
             <div
               key={place.id}
-              className="px-3 -mx-2 rounded-2xl hover:bg-black/5"
+              className="px-3 -mx-2 rounded-2xl hover:bg-black/5 cursor-pointer"
+              onClick={(e) => {
+                // Non aprire i dettagli se si clicca sul pulsante "Aggiungi al carrello" o sul selettore quantità
+                if (e.target && e.target.closest && (e.target.closest('button') || e.target.closest('input'))) {
+                  return;
+                }
+                setSelectedPlace(place);
+              }}
             >
               <div
                 style={{
@@ -110,25 +106,15 @@ function App() {
                 <div className="hidden sm:block text-end py-2 px-3 text-sm text-black/60 whitespace-nowrap flex-auto">
                   {place.city || "–"}
                 </div>
-                <div className="py-2 whitespace-nowrap flex items-center justify-end gap-2">
-                  {!isInCart(place.id) && (place.stock ?? 10) > 0 && (
-                    <QuantitySelector
-                      quantity={quantities[place.id] ?? 1}
-                      onQuantityChange={(qty) => handleQuantityChange(place.id, qty)}
-                      maxQuantity={place.stock ?? 10}
-                      minQuantity={1}
-                      size="sm"
-                      className="hidden sm:flex"
-                    />
-                  )}
+                <div className="py-2 whitespace-nowrap flex justify-end">
                   <Button
-                    aria-label={isInCart(place.id) ? `${place.name} già nel carrello` : (place.stock ?? 10) === 0 ? `${place.name} non disponibile` : `Aggiungi ${place.name} al carrello`}
+                    aria-label={isInCart(place.id) ? `${place.name} già nel carrello` : `Aggiungi ${place.name} al carrello`}
                     color={isInCart(place.id) ? "primary" : "secondary"}
                     variant={isInCart(place.id) ? "soft" : "ghost"}
                     size="sm"
                     uniform
                     onClick={() => handleAddToCart(place)}
-                    disabled={isInCart(place.id) || (place.stock ?? 10) === 0}
+                    disabled={isInCart(place.id)}
                   >
                     {isInCart(place.id) ? (
                       <ShoppingCart strokeWidth={1.5} className="h-5 w-5" />
@@ -152,6 +138,15 @@ function App() {
           </Button>
         </div>
       </div>
+      <AnimatePresence>
+        {selectedPlace && (
+          <ProductDetails
+            place={selectedPlace}
+            onClose={() => setSelectedPlace(null)}
+            position="modal"
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

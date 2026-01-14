@@ -4,17 +4,12 @@ import { Button } from "@openai/apps-sdk-ui/components/Button";
 import SafeImage from "../electronics/SafeImage";
 import { useProxyBaseUrl } from "../use-proxy-base-url";
 import { useCart } from "../use-cart";
-import QuantitySelector from "../utils/QuantitySelector";
 
-function PlaceCard({ place }) {
+function PlaceCard({ place, onCardClick }) {
   const proxyBaseUrl = useProxyBaseUrl();
   const { addToCart, isInCart } = useCart();
-  const [quantity, setQuantity] = React.useState(1);
   
   if (!place) return null;
-
-  // Stock disponibile (default: 10 se non specificato)
-  const maxStock = place.stock ?? 10;
 
   // Usa useCallback per evitare che l'handler venga ricreato ad ogni render
   // e per assicurarsi che ogni PlaceCard abbia il proprio handler specifico
@@ -31,26 +26,34 @@ function PlaceCard({ place }) {
     console.log("[PlaceCard] Adding product to cart:", {
       id: place.id,
       name: place.name,
-      quantity: quantity,
       cardId: place.id, // Per verificare che sia il prodotto corretto
     });
     
-    // Aggiungi SOLO questo prodotto specifico con la quantità selezionata
+    // Aggiungi SOLO questo prodotto specifico
     addToCart({
       id: place.id,
       name: place.name,
       price: place.price,
       description: place.description,
       thumbnail: place.thumbnail,
-      stock: maxStock,
-      quantity: quantity,
     });
-  }, [place.id, place.name, place.price, place.description, place.thumbnail, addToCart, quantity, maxStock]);
+  }, [place.id, place.name, place.price, place.description, place.thumbnail, addToCart]);
 
   const inCart = isInCart(place.id);
 
   return (
-    <div className="min-w-[220px] select-none max-w-[220px] w-[65vw] sm:w-[220px] self-stretch flex flex-col">
+    <div 
+      className="min-w-[220px] select-none max-w-[220px] w-[65vw] sm:w-[220px] self-stretch flex flex-col cursor-pointer"
+      onClick={(e) => {
+        // Non aprire i dettagli se si clicca sul pulsante "Aggiungi al carrello"
+        if (e.target && e.target.closest && e.target.closest('button')) {
+          return;
+        }
+        if (onCardClick) {
+          onCardClick(place);
+        }
+      }}
+    >
       <div className="w-full">
         <SafeImage
           src={place.thumbnail}
@@ -74,25 +77,13 @@ function PlaceCard({ place }) {
             {place.description}
           </div>
         ) : null}
-        <div className="mt-5 flex flex-col gap-2">
-          {!inCart && maxStock > 0 && (
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-black/60">Quantità:</span>
-              <QuantitySelector
-                quantity={quantity}
-                onQuantityChange={setQuantity}
-                maxQuantity={maxStock}
-                minQuantity={1}
-                size="sm"
-              />
-            </div>
-          )}
+        <div className="mt-5 flex gap-2">
           <Button 
             color="primary" 
             size="sm" 
             variant="solid"
             onClick={handleAddToCart}
-            disabled={inCart || maxStock === 0}
+            disabled={inCart}
             className="flex-1"
           >
             {inCart ? (
@@ -100,8 +91,6 @@ function PlaceCard({ place }) {
                 <ShoppingCart className="h-4 w-4 mr-1" />
                 Nel carrello
               </>
-            ) : maxStock === 0 ? (
-              "Non disponibile"
             ) : (
               <>
                 <ShoppingCart className="h-4 w-4 mr-1" />

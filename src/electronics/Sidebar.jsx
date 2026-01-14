@@ -7,15 +7,10 @@ import { Button } from "@openai/apps-sdk-ui/components/Button";
 import SafeImage from "./SafeImage";
 import { useProxyBaseUrl } from "../use-proxy-base-url";
 import { useCart } from "../use-cart";
-import QuantitySelector from "../utils/QuantitySelector";
 
 function PlaceListItem({ place, isSelected, onClick }) {
   const proxyBaseUrl = useProxyBaseUrl();
   const { addToCart, isInCart } = useCart();
-  const [quantity, setQuantity] = React.useState(1);
-
-  // Stock disponibile (default: 10 se non specificato)
-  const maxStock = place?.stock ?? 10;
 
   const handleAddToCart = (e) => {
     e.stopPropagation();
@@ -25,8 +20,6 @@ function PlaceListItem({ place, isSelected, onClick }) {
       price: place.price,
       description: place.description,
       thumbnail: place.thumbnail,
-      stock: maxStock,
-      quantity: quantity,
     });
   };
   return (
@@ -62,25 +55,15 @@ function PlaceListItem({ place, isSelected, onClick }) {
               {place.price ? <span className="">· {place.price}</span> : null}
             </div>
           </div>
-          <div className="flex-none flex items-center gap-2">
-            {!isInCart(place.id) && maxStock > 0 && (
-              <QuantitySelector
-                quantity={quantity}
-                onQuantityChange={setQuantity}
-                maxQuantity={maxStock}
-                minQuantity={1}
-                size="sm"
-                className="hidden sm:flex"
-              />
-            )}
+          <div className="flex-none">
             <Button
               color={isInCart(place.id) ? "primary" : "secondary"}
               variant={isInCart(place.id) ? "soft" : "ghost"}
               size="sm"
               uniform
               onClick={handleAddToCart}
-              disabled={isInCart(place.id) || maxStock === 0}
-              aria-label={isInCart(place.id) ? `${place.name} già nel carrello` : maxStock === 0 ? `${place.name} non disponibile` : `Aggiungi ${place.name} al carrello`}
+              disabled={isInCart(place.id)}
+              aria-label={isInCart(place.id) ? `${place.name} già nel carrello` : `Aggiungi ${place.name} al carrello`}
             >
               <ShoppingCart className="h-4 w-4" />
             </Button>
