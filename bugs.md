@@ -91,6 +91,24 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
 
 ## Bug risolti
 
+### Warning TypeScript - Import e helper non usati nel carrello
+- [x] **Warning TS6133 - Simboli non usati in `shopping-cart`**: [2026-01-15]
+  - **Bug trovato**: [2026-01-15] La console mostrava warning TypeScript per import e funzioni non usate in `src/shopping-cart/index.tsx` (es. `useEffect`, `useMemo`, `useRef`, `useOpenAiGlobal`, helper JSON di debug).
+  - **Bug risolto**: [2026-01-15] Rimossi import e helper di debug non più usati per eliminare i warning.
+  - **Soluzione applicata**:
+    1. Eliminati import non usati (`useEffect`, `useMemo`, `useRef`, `useOpenAiGlobal`) e helper di debug (`usePrettyJson`, `JsonPanel`, `createDefaultCartState`).
+    2. Rimossi i riferimenti a `toolOutput`, `toolResponseMetadata`, e `cartState` non utilizzati.
+  - **Verificato**: [2026-01-15] I warning TS6133 non sono più presenti in `src/shopping-cart/index.tsx`.
+
+### Errore TypeScript - Modulo JSX senza dichiarazione
+- [x] **TS7016 - `SafeImage` JSX senza declaration**: [2026-01-15]
+  - **Bug trovato**: [2026-01-15] Errore TypeScript `TS7016` in `src/utils/ProductDetails.tsx` per import di `../electronics/SafeImage` (file `.jsx` senza dichiarazione di modulo).
+  - **Bug risolto**: [2026-01-15] Aggiunta dichiarazione globale per moduli `.jsx` e aggiornato l'import con estensione `.jsx`.
+  - **Soluzione applicata**:
+    1. Creato `src/jsx.d.ts` con `declare module "*.jsx"`.
+    2. Aggiornato l'import di `SafeImage` in `src/utils/ProductDetails.tsx` per includere l'estensione `.jsx`.
+  - **Verificato**: [2026-01-15] L'errore TS7016 non è più presente.
+
 ### CORS Error - UI non si carica
 - [x] **Bug CORS - Access-Control-Allow-Origin mancante**: [2026-01-08]
   - **Bug trovato**: [2026-01-08] Il widget non si caricava quando veniva renderizzato da ChatGPT. Il browser bloccava il caricamento di risorse JavaScript e CSS a causa di una policy CORS. L'errore specifico era: "CORS policy blocking" o "Access-Control-Allow-Origin header was missing" quando si tentava di caricare `https://sdk-electronics.onrender.com/assets/electronics-carousel-2d2b.js` da origine `https://connector...web-sandbox.oaiusercontent.com`.

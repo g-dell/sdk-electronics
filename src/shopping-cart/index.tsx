@@ -1,52 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AnimatePresence } from "framer-motion";
-import { useOpenAiGlobal } from "../use-openai-global";
 import { useCart } from "../use-cart";
 import { AvocadoIcon, BreadIcon, EggIcon, JarIcon, TomatoIcon } from "./icons";
 import type { CartItem } from "../types";
 import ProductDetails from "../utils/ProductDetails";
-
-type CartWidgetState = {
-  cartId?: string;
-  items?: CartItem[];
-  [key: string]: unknown;
-};
-
-const createDefaultCartState = (): CartWidgetState => ({
-  items: [],
-});
-
-function usePrettyJson(value: unknown): string {
-  return useMemo(() => {
-    if (value === undefined || value === null) {
-      return "null";
-    }
-
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch (error) {
-      return `<<unable to render: ${error}>>`;
-    }
-  }, [value]);
-}
-
-function JsonPanel({ label, value }: { label: string; value: unknown }) {
-  const pretty = usePrettyJson(value);
-
-  return (
-    <section className="rounded-2xl border border-black/20 bg-[#fffaf5] p-4">
-      <header className="mb-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/60">
-          {label}
-        </p>
-      </header>
-      <pre className="max-h-64 overflow-auto rounded-xl bg-white p-3 font-mono text-xs text-black/70 shadow-sm">
-        {pretty}
-      </pre>
-    </section>
-  );
-}
 
 const iconMatchers = [
   { keywords: ["egg", "eggs"], Icon: EggIcon },
@@ -56,17 +14,10 @@ const iconMatchers = [
 ];
 
 function App() {
-  // NOTA: toolOutput e toolResponseMetadata sono usati solo per debug, non per popolare il carrello
-  const toolOutput = useOpenAiGlobal("toolOutput");
-  const toolResponseMetadata = useOpenAiGlobal("toolResponseMetadata");
-  
   // IMPORTANTE: shopping-cart usa useCart che gestisce il carrello condiviso tramite la chiave specifica "sharedCartItems"
   // Questo garantisce che il carrello mostri SOLO i prodotti aggiunti tramite i pulsanti "Aggiungi al carrello"
   // Ignora completamente qualsiasi altro dato in widgetState (es. da electronics-shop)
   const { cartItems, addToCart, removeFromCart } = useCart();
-  
-  // Mantieni cartState per compatibilità con il codice esistente (per debug)
-  const cartState = useMemo(() => ({ items: cartItems }), [cartItems]);
   const [selectedItem, setSelectedItem] = useState<CartItem | null>(null);
   const animationStyles = `
     @keyframes fadeUp {

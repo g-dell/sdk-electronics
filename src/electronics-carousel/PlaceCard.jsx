@@ -43,7 +43,7 @@ function PlaceCard({ place, onCardClick }) {
 
   return (
     <div 
-      className="min-w-[220px] select-none max-w-[220px] w-[65vw] sm:w-[220px] self-stretch flex flex-col cursor-pointer"
+      className="min-w-[220px] select-none max-w-[220px] w-[65vw] sm:w-[220px] self-stretch flex flex-col cursor-pointer bg-white rounded-2xl shadow-[0_6px_16px_rgba(0,0,0,0.08)] ring-1 ring-black/5 transition-shadow hover:shadow-[0_10px_24px_rgba(0,0,0,0.12)]"
       onClick={(e) => {
         // Non aprire i dettagli se si clicca sul pulsante "Aggiungi al carrello"
         if (e.target && e.target.closest && e.target.closest('button')) {
@@ -66,6 +66,11 @@ function PlaceCard({ place, onCardClick }) {
         <div className="text-base font-medium truncate line-clamp-1">
           {place.name}
         </div>
+        {place.price ? (
+          <div className="text-sm font-semibold text-black/80 mt-1">
+            {place.price}
+          </div>
+        ) : null}
         <div className="text-xs mt-1 text-black/60 flex items-center gap-1">
           <Star className="h-3 w-3" aria-hidden="true" />
           {place.rating?.toFixed ? place.rating.toFixed(1) : place.rating}

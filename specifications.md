@@ -91,6 +91,8 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
 - [11. Migliorie UI e UX](#11-migliorie-ui-e-ux)
   - [11.1 Filtri dinamici per categoria nello shop](#111-filtri-dinamici-per-categoria-nello-shop)
   - [11.2 Limite di prodotti visualizzati](#112-limite-di-prodotti-visualizzati)
+  - [11.3 Migliorie carosello prodotti](#113-migliorie-carosello-prodotti)
+  - [11.4 Pulizia warning TypeScript](#114-pulizia-warning-typescript)
 
 ---
 
@@ -1556,3 +1558,52 @@ Questa sezione documenta le migliorie implementate per migliorare l'esperienza u
   - **Note**:
     - I limiti sono configurabili modificando le costanti `MAX_PRODUCTS_SHOP` e `MAX_PRODUCTS_CAROUSEL` all'inizio dei rispettivi file
     - I limiti vengono applicati dopo il filtraggio (se applicabile), quindi se ci sono filtri attivi, vengono mostrati fino a 24 prodotti filtrati nello shop e fino a 12 nel carosello
+
+### 11.3 Migliorie carosello prodotti
+
+- [x] **Spazio laterale per evitare taglio prima card**: Aggiunto padding orizzontale al wrapper delle card del carosello per evitare che la prima card venga tagliata a sinistra su desktop e mobile.
+  - **Completato**: [2026-01-15] Aggiunto `px-4` al container flex delle card.
+  - **Implementazione**:
+    - Aggiornato il wrapper delle card in `src/electronics-carousel/index.jsx` per aggiungere padding orizzontale costante.
+  - **File modificati**:
+    - `src/electronics-carousel/index.jsx`
+
+- [x] **Riga prezzo dedicata nelle card del carosello**: Mostrato il prezzo in una riga separata sotto il nome per migliorarne la leggibilità.
+  - **Completato**: [2026-01-15] Aggiunta riga prezzo con stile dedicato.
+  - **Implementazione**:
+    - Inserita riga prezzo condizionale (`place.price`) sotto il nome in `src/electronics-carousel/PlaceCard.jsx`.
+  - **File modificati**:
+    - `src/electronics-carousel/PlaceCard.jsx`
+
+### 11.4 Pulizia warning TypeScript
+
+- [x] **Risolti warning TS nel carrello**: Rimossi import e helper non utilizzati che generavano `ts6133`.
+  - **Completato**: [2026-01-15] Rimosse utility di debug non più usate e import inutilizzati.
+  - **Implementazione**:
+    - Eliminati `useEffect`, `useMemo`, `useRef`, `useOpenAiGlobal`, `JsonPanel`, `usePrettyJson`, `createDefaultCartState` e variabili debug non usate.
+  - **File modificati**:
+    - `src/shopping-cart/index.tsx`
+
+- [x] **Compatibilità import JSX in TSX**: Garantita la risoluzione dei componenti `.jsx` importati in file TypeScript.
+  - **Completato**: [2026-01-15] Aggiunta dichiarazione di modulo per `.jsx` e aggiornato import `SafeImage`.
+  - **Implementazione**:
+    - Creato `src/jsx.d.ts` con dichiarazione `declare module "*.jsx"`.
+    - Aggiornato import `SafeImage` in `src/utils/ProductDetails.tsx` per usare l'estensione `.jsx`.
+  - **File modificati**:
+    - `src/jsx.d.ts`
+    - `src/utils/ProductDetails.tsx`
+
+### 11.3 Miglioramenti visivi carosello
+
+- [x] **Separazione visiva delle card**: aggiunta ombreggiatura e hover per distinguere meglio le card nel carosello.
+  - **Completato**: [2026-01-15]
+  - **Implementazione**:
+    - `src/electronics-carousel/PlaceCard.jsx`: aggiunte classi `bg-white`, `rounded-2xl`, `ring-1 ring-black/5`, `shadow[...]`, `transition-shadow`, `hover:shadow[...]`
+  - **Vantaggi**:
+    - ✅ Card più distinguibili tra loro
+    - ✅ Maggiore profondità visiva durante lo scroll
+
+- [x] **Prezzo evidenziato nella card**: aggiunta una riga prezzo sotto il nome prodotto quando disponibile.
+  - **Completato**: [2026-01-15]
+  - **Implementazione**:
+    - `src/electronics-carousel/PlaceCard.jsx`: rendering condizionale di `place.price` con stile `text-sm font-semibold`
