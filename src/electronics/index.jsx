@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { AnimatePresence } from "framer-motion";
 import Inspector from "./Inspector";
 import Sidebar from "./Sidebar";
+import ProductDetails from "../utils/ProductDetails";
 import { useOpenAiGlobal } from "../use-openai-global";
 import { useMaxHeight } from "../use-max-height";
 import { Maximize2 } from "lucide-react";
@@ -56,6 +57,7 @@ function App() {
   const displayMode = useOpenAiGlobal("displayMode");
   const allowInspector = displayMode === "fullscreen";
   const maxHeight = useMaxHeight() ?? undefined;
+  const shouldShowProductModal = Boolean(selectedPlace) && !allowInspector;
 
   useEffect(() => {
     if (mapObj.current) return;
@@ -233,6 +235,17 @@ function App() {
               key={selectedPlace.id}
               place={selectedPlace}
               onClose={() => navigate("..")}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Product modal (inline/pip) */}
+        <AnimatePresence>
+          {shouldShowProductModal && (
+            <ProductDetails
+              place={selectedPlace}
+              onClose={() => navigate("..")}
+              position="modal"
             />
           )}
         </AnimatePresence>

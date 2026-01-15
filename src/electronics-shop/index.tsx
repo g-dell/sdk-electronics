@@ -18,6 +18,7 @@ import { useMaxHeight } from "../use-max-height";
 import { useOpenAiGlobal } from "../use-openai-global";
 import { useWidgetProps } from "../use-widget-props";
 import { useWidgetState } from "../use-widget-state";
+import ProductDetails from "../utils/ProductDetails";
 
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { Image } from "@openai/apps-sdk-ui/components/Image";
@@ -579,6 +580,7 @@ function App() {
   const [hoveredCartItemId, setHoveredCartItemId] = useState<string | null>(
     null
   );
+  const [selectedProduct, setSelectedProduct] = useState<CartItem | null>(null);
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
 
   const updateWidgetState = useCallback(
@@ -1046,6 +1048,23 @@ function App() {
   const selectedCartItemName = selectedCartItem?.name ?? null;
   const shouldShowSelectedCartItemPanel =
     selectedCartItem != null && !isFullscreen;
+  const selectedProductDetails = useMemo(() => {
+    if (!selectedProduct) {
+      return null;
+    }
+
+    return {
+      id: selectedProduct.id,
+      name: selectedProduct.name,
+      price: `$${selectedProduct.price.toFixed(2)}`,
+      description:
+        selectedProduct.shortDescription ??
+        selectedProduct.detailSummary ??
+        selectedProduct.description,
+      thumbnail: selectedProduct.image,
+      stock: selectedProduct.stock,
+    };
+  }, [selectedProduct]);
 
   useEffect(() => {
     if (isCheckoutRoute) {
@@ -1226,6 +1245,17 @@ function App() {
                         {shortDescription}
                       </p>
                     ) : null}
+                    <button
+                      type="button"
+                      className="self-start text-xs font-semibold text-[#F46C21] transition hover:underline"
+                      aria-label={`Open details for ${item.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedProduct(item);
+                      }}
+                    >
+                      Dettagli
+                    </button>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center rounded-full bg-black/[0.04] px-1.5 py-1 text-black">
                         <button
@@ -1418,6 +1448,15 @@ function App() {
           </div>
         )}
       </main>
+      <AnimatePresence>
+        {selectedProductDetails && (
+          <ProductDetails
+            place={selectedProductDetails}
+            onClose={() => setSelectedProduct(null)}
+            position="modal"
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

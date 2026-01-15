@@ -81,7 +81,7 @@ export default function ProductDetails({ place, onClose, position = "modal" }: P
           <Button
             aria-label="Close details"
             className="inline-flex absolute z-10 top-4 left-4 xl:top-4 xl:left-4 shadow-xl rounded-full p-2 bg-white ring ring-black/10 xl:shadow-2xl hover:bg-white"
-            variant="soft"
+            variant="solid"
             color="secondary"
             size="sm"
             uniform

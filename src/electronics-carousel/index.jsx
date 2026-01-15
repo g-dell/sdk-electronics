@@ -104,7 +104,7 @@ function App() {
           className="absolute left-2 top-1/2 -translate-y-1/2 z-10 shadow-lg"
           color="secondary"
           size="sm"
-          variant="soft"
+          variant="solid"
           uniform
           onClick={() => emblaApi && emblaApi.scrollPrev()}
           type="button"
@@ -122,7 +122,7 @@ function App() {
           className="absolute right-2 top-1/2 -translate-y-1/2 z-10 shadow-lg"
           color="secondary"
           size="sm"
-          variant="soft"
+          variant="solid"
           uniform
           onClick={() => emblaApi && emblaApi.scrollNext()}
           type="button"
