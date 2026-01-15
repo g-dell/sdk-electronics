@@ -99,6 +99,7 @@ export type CartItem = {
   tags?: string[];
   quantity: number;
   image: string;
+  stock?: number; // Numero di prodotti disponibili in magazzino
 };
 
 /** Extra events */

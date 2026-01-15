@@ -86,6 +86,12 @@ function injectDatepickerStylesOnce() {
     z-index: 70;
   }
   `;
+  
+  // Check if styles are already injected to avoid duplicates
+  if (document.querySelector('style[data-injected="react-datepicker-minimal"]')) {
+    return;
+  }
+  
   const style = document.createElement("style");
   style.setAttribute("data-injected", "react-datepicker-minimal");
   style.textContent = css;

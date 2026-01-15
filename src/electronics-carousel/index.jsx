@@ -6,11 +6,16 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import PlaceCard from "./PlaceCard";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { useOpenAiGlobal } from "../use-openai-global";
+import { AnimatePresence } from "framer-motion";
+import ProductDetails from "../utils/ProductDetails";
+
+const MAX_PRODUCTS_CAROUSEL = 6; // Limite massimo di prodotti da visualizzare nel carosello
 
 function App() {
   // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
   const toolOutput = useOpenAiGlobal("toolOutput");
-  const places = toolOutput?.places || [];
+  const places = (toolOutput?.places || []).slice(0, MAX_PRODUCTS_CAROUSEL);
+  const [selectedPlace, setSelectedPlace] = React.useState(null);
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "center",
     loop: false,
@@ -41,10 +46,23 @@ function App() {
       <div className="overflow-hidden" ref={emblaRef}>
         <div className="flex gap-4 max-sm:mx-5 items-stretch">
           {places.map((place) => (
-            <PlaceCard key={place.id} place={place} />
+            <PlaceCard 
+              key={place.id} 
+              place={place} 
+              onCardClick={setSelectedPlace}
+            />
           ))}
         </div>
       </div>
+      <AnimatePresence>
+        {selectedPlace && (
+          <ProductDetails
+            place={selectedPlace}
+            onClose={() => setSelectedPlace(null)}
+            position="modal"
+          />
+        )}
+      </AnimatePresence>
       {/* Edge gradients */}
       <div
         aria-hidden

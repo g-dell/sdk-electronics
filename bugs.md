@@ -329,6 +329,70 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
   - **Sezione correlata**: Server Python - gestione richieste statiche in `electronics_server_python/main.py`
   - **Stato**: ⚠️ **Non critico** - Le richieste favicon sono normali e non bloccano il funzionamento del server. Opzionalmente si può aggiungere un endpoint per servire un favicon o ignorare queste richieste nel logging.
 
+### Errore Client - Cannot moveNode (ChatGPT DOM manipulation)
+- [ ] **Bug Client - Cannot moveNode: new parent is already a descendant**: [2026-01-09] Errore JavaScript nella console di ChatGPT quando vengono renderizzati o aggiornati i widget. L'errore indica che ChatGPT sta tentando di spostare un nodo DOM in un genitore che è già un discendente di quel nodo, creando una struttura DOM circolare invalida.
+  - **Come si manifesta**: 
+    - **Errore nella console**: `Cannot moveNode with nodeId: <uuid> - new parent is already a descendant.`
+    - **Dettagli errore**: L'oggetto errore contiene:
+      - `descendants`: Array di ID di nodi che sono discendenti del nodo che si sta tentando di spostare
+      - `parentId`: ID del nodo genitore di destinazione (presente nell'array `descendants`, confermando la relazione circolare)
+    - **Quando si verifica**: Durante il rendering o l'aggiornamento dinamico dei widget nella conversazione ChatGPT
+    - **Location**: Console del browser su `chatgpt.com` quando si visualizzano widget embedded
+  - **Causa tecnica**:
+    - ChatGPT gestisce il DOM dei widget embedded e tenta di spostare/riorganizzare elementi durante gli aggiornamenti della conversazione
+    - Un elemento A viene spostato dentro un elemento B, ma B è già dentro A (o nella sua catena di discendenti)
+    - Il browser blocca questa operazione perché creerebbe una struttura DOM invalida (gerarchia circolare)
+    - Questo può verificarsi quando:
+      1. Aggiornamenti DOM asincroni si sovrappongono durante re-render di widget React
+      2. Conflitti tra la gestione del DOM di ChatGPT e i widget embedded
+      3. Re-render di widget durante aggiornamenti della conversazione
+  - **Sezione correlata**: 
+    - Widget React in `src/` (tutti i componenti che vengono renderizzati come widget)
+    - Potenziali problemi con chiavi React non stabili o strutture DOM annidate problematiche
+  - **Impact**: ⚠️ **Non critico - Errore client-side di ChatGPT** - L'errore si verifica nella console del browser ma generalmente non blocca il funzionamento dei widget. I widget continuano a funzionare correttamente nonostante l'errore. Tuttavia, può indicare problemi di performance o instabilità durante gli aggiornamenti DOM.
+  - **Soluzioni possibili** (da verificare):
+    1. **Verificare chiavi React**: Assicurarsi che tutti gli elementi in liste abbiano chiavi univoche e stabili (non usare `index` come chiave)
+    2. **Ottimizzare re-render**: Usare `React.memo` e `useMemo` per evitare re-render non necessari che possono causare conflitti DOM
+    3. **Evitare manipolazioni DOM dirette**: I widget non dovrebbero manipolare direttamente il DOM esterno (fuori dal loro container). ChatGPT gestisce il DOM dei widget, quindi evitare operazioni come `document.body.appendChild(...)`
+    4. **Verificare struttura HTML**: Assicurarsi che i widget non creino strutture DOM annidate problematiche
+    5. **Workaround temporaneo**: Se l'errore si verifica durante l'uso, ricaricare la pagina di ChatGPT o chiudere e riaprire la conversazione
+  - **Nota tecnica**: 
+    - Questo è un errore interno di ChatGPT durante la gestione del DOM dei widget embedded
+    - Non è direttamente causato dal codice del progetto, ma potrebbe essere influenzato da come i widget vengono renderizzati
+    - L'errore è gestito da ChatGPT e generalmente non blocca il funzionamento
+    - Se l'errore persiste frequentemente, potrebbe essere necessario segnalarlo a OpenAI come problema con la gestione DOM dei widget
+  - **Best practices per evitare il problema**:
+    - ✅ Usare chiavi univoche e stabili: `{items.map(item => <div key={item.id}>...</div>)}`
+    - ✅ Evitare chiavi basate su index: `{items.map((item, index) => <div key={index}>...</div>)}` ❌
+    - ✅ Usare `React.memo` per componenti che non cambiano frequentemente
+    - ✅ Evitare manipolazioni DOM dirette fuori dal container del widget
+    - ✅ Assicurarsi che la struttura DOM dei widget sia valida e non crei gerarchie circolari
+  - **Note sul codice esistente**:
+    - La maggior parte dei componenti usa chiavi stabili (`key={item.id}` o chiavi composte)
+    - Un caso eccezionale: `src/solar-system/solar-system.jsx` usa `key={index}` per le parole in un testo streamato (riga 66). Questo potrebbe essere accettabile perché:
+      - Le parole sono parte di un testo statico che viene animato
+      - L'ordine non cambia durante il rendering
+      - È un componente di animazione temporaneo
+    - Tuttavia, per maggiore sicurezza, si potrebbe considerare di usare una chiave più stabile anche in questo caso (es. `key={`word-${index}-${word.substring(0, 5)}`}`)
+  - **Correzioni applicate**: [2026-01-09]
+    1. **Chiavi React corrette in `solar-system.jsx`**:
+       - Modificato `StreamText` per usare chiavi più stabili: `key={`word-${index}-${word.substring(0, 10)}-${word.length}`}` invece di `key={index}`
+       - Rimosso `key={index}` duplicato da `StreamWord` (la chiave è già gestita dal parent)
+       - Questo riduce la probabilità di conflitti DOM durante re-render
+    2. **Aggiunto React.memo per ottimizzare re-render**:
+       - `src/mixed-auth-search/SliceCard.jsx`: Memoizzato per evitare re-render quando le props non cambiano
+       - `src/electronics-carousel/PlaceCard.jsx`: Memoizzato con comparazione personalizzata basata su `place.id`
+       - `src/electronics-albums/AlbumCard.jsx`: Memoizzato con comparazione personalizzata basata su `album.id` e callback `onSelect`
+       - Questi componenti vengono renderizzati in liste e beneficiano di memoization per ridurre re-render non necessari
+    3. **Verifiche manipolazioni DOM**:
+       - Verificato che non ci siano manipolazioni DOM dirette problematiche
+       - `document.querySelector` in `electronics/index.jsx` è usato solo per leggere dimensioni (non per modificare DOM)
+       - `document.head.appendChild(style)` in `todo.jsx` è usato per iniettare stili CSS una volta (pratica comune e sicura)
+       - Aggiunto controllo aggiuntivo in `injectDatepickerStylesOnce()` per verificare se lo stile è già presente nel DOM prima di aggiungerlo (backup al controllo esistente con variabile globale)
+       - Tutti gli altri usi di `document.getElementById` sono per il mounting iniziale di React (normale e corretto)
+  - **Stato**: ⚠️ **Migliorato - Errore client-side di ChatGPT** - Le best practices sono state applicate per minimizzare la probabilità che l'errore si verifichi. L'errore è causato dalla gestione interna del DOM di ChatGPT durante il rendering dei widget, ma le ottimizzazioni applicate dovrebbero ridurre i conflitti DOM. I widget funzionano correttamente nonostante l'errore nella console.
+  - **Verificato**: [2026-01-09] L'errore è stato osservato nella console di ChatGPT durante il rendering dei widget. Le correzioni sono state applicate per migliorare la stabilità del rendering. I widget continuano a funzionare correttamente. Le modifiche dovrebbero ridurre la frequenza dell'errore durante gli aggiornamenti DOM.
+
 ## Verifiche da fare
 
 **Nota**: Le verifiche dettagliate sono state spostate da `specifications.md` a questo file per mantenere `specifications.md` focalizzato solo sulle specifiche da implementare. Le verifiche qui elencate devono essere completate e testate funzionalmente prima di poter essere spuntate definitivamente.

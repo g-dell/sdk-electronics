@@ -44,4 +44,11 @@ function AlbumCard({ album, onSelect }) {
   );
 }
 
-export default AlbumCard;
+// Memoize component to prevent unnecessary re-renders
+// Only re-render if album ID or onSelect callback changes
+export default React.memo(AlbumCard, (prevProps, nextProps) => {
+  return (
+    prevProps.album?.id === nextProps.album?.id &&
+    prevProps.onSelect === nextProps.onSelect
+  );
+});

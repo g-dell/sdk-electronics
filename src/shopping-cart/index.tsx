@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { useOpenAiGlobal } from "../use-openai-global";
-import { useWidgetState } from "../use-widget-state";
+import { useCart } from "../use-cart";
 import { AvocadoIcon, BreadIcon, EggIcon, JarIcon, TomatoIcon } from "./icons";
 import type { CartItem } from "../types";
 
@@ -46,29 +46,6 @@ function JsonPanel({ label, value }: { label: string; value: unknown }) {
   );
 }
 
-const suggestedItems = [
-  {
-    name: "Eggs",
-    description: "Breakfast basics",
-    Icon: EggIcon,
-  },
-  {
-    name: "Bread",
-    description: "Fresh and toasty",
-    Icon: BreadIcon,
-  },
-  {
-    name: "Tomatoes",
-    description: "Juicy and bright",
-    Icon: TomatoIcon,
-  },
-  {
-    name: "Avocados",
-    description: "Perfectly ripe",
-    Icon: AvocadoIcon,
-  },
-];
-
 const iconMatchers = [
   { keywords: ["egg", "eggs"], Icon: EggIcon },
   { keywords: ["bread"], Icon: BreadIcon },
@@ -77,13 +54,17 @@ const iconMatchers = [
 ];
 
 function App() {
+  // NOTA: toolOutput e toolResponseMetadata sono usati solo per debug, non per popolare il carrello
   const toolOutput = useOpenAiGlobal("toolOutput");
   const toolResponseMetadata = useOpenAiGlobal("toolResponseMetadata");
-  const widgetState = useOpenAiGlobal("widgetState");
-  const [cartState, setCartState] = useWidgetState<CartWidgetState>(
-    createDefaultCartState
-  );
-  const cartItems = Array.isArray(cartState?.items) ? cartState.items : [];
+  
+  // IMPORTANTE: shopping-cart usa useCart che gestisce il carrello condiviso tramite la chiave specifica "sharedCartItems"
+  // Questo garantisce che il carrello mostri SOLO i prodotti aggiunti tramite i pulsanti "Aggiungi al carrello"
+  // Ignora completamente qualsiasi altro dato in widgetState (es. da electronics-shop)
+  const { cartItems, addToCart, removeFromCart } = useCart();
+  
+  // Mantieni cartState per compatibilità con il codice esistente (per debug)
+  const cartState = useMemo(() => ({ items: cartItems }), [cartItems]);
   const animationStyles = `
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(10px); }
@@ -91,132 +72,42 @@ function App() {
     }
   `;
 
-  function addItem(name: string) {
-    if (!name) {
+  function adjustQuantity(id: string, delta: number) {
+    if (!id || delta === 0) {
       return;
     }
 
-    setCartState((prevState) => {
-      const baseState: CartWidgetState = prevState ?? {};
-      const items = Array.isArray(baseState.items)
-        ? baseState.items.map((item) => ({ ...item }))
-        : [];
-      const idx = items.findIndex((item) => item.name === name);
-
-      if (idx === -1) {
-        items.push({ name, quantity: 1 });
-      } else {
-        const current = items[idx];
-        items[idx] = {
-          ...current,
-          quantity: (current.quantity ?? 0) + 1,
-        };
+    // Usa removeFromCart per decrementare (che gestisce anche la rimozione quando quantity = 0)
+    // Per incrementare, trova l'item e aggiungilo di nuovo (useCart incrementerà la quantità)
+    if (delta < 0) {
+      // Decrementa: usa removeFromCart che decrementa di 1
+      for (let i = 0; i < Math.abs(delta); i++) {
+        removeFromCart(id);
       }
-
-      return { ...baseState, items };
-    });
+    } else {
+      // Incrementa: trova l'item e aggiungilo di nuovo (useCart incrementerà la quantità se esiste già)
+      const item = cartItems.find((item) => item.id === id);
+      if (item) {
+        // useCart.addToCart incrementerà la quantità se l'item esiste già
+        for (let i = 0; i < delta; i++) {
+          addToCart({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            description: item.description,
+            image: item.image,
+          });
+        }
+      }
+    }
   }
 
-  function adjustQuantity(name: string, delta: number) {
-    if (!name || delta === 0) {
-      return;
-    }
-
-    console.log("adjustQuantity", { name, delta });
-    setCartState((prevState) => {
-      const baseState: CartWidgetState = prevState ?? {};
-      const items = Array.isArray(baseState.items)
-        ? baseState.items.map((item) => ({ ...item }))
-        : [];
-      console.log("adjustQuantity:prev", baseState);
-
-      const idx = items.findIndex((item) => item.name === name);
-      if (idx === -1) {
-        console.log("adjustQuantity:missing", name);
-        return baseState;
-      }
-
-      const current = items[idx];
-      const nextQuantity = Math.max(0, (current.quantity ?? 0) + delta);
-      if (nextQuantity === 0) {
-        items.splice(idx, 1);
-      } else {
-        items[idx] = { ...current, quantity: nextQuantity };
-      }
-
-      const nextState = { ...baseState, items };
-      console.log("adjustQuantity:next", nextState);
-      return nextState;
-    });
-  }
-
-  const lastToolOutputRef = useRef<string>("__tool_output_unset__");
-
-  useEffect(() => {
-    // Merge deltas (toolOutput) into the latest widgetState without
-    // and then update cartState. Runs whenever toolOutput changes.
-    if (toolOutput == null) {
-      return;
-    }
-
-    // changes to cartState triggered from UI will also trigger another global update event,
-    // so we need to check if the tool event has actually changed.
-    const serializedToolOutput = (() => {
-      try {
-        return JSON.stringify({ toolOutput, toolResponseMetadata });
-      } catch (error) {
-        console.warn("Unable to serialize toolOutput", error);
-        return "__tool_output_error__";
-      }
-    })();
-
-    if (serializedToolOutput === lastToolOutputRef.current) {
-      console.log("useEffect skipped (toolOutput is actually unchanged)");
-      return;
-    }
-    lastToolOutputRef.current = serializedToolOutput;
-
-    // Get the items that the user wants to add to the cart from toolOutput
-    const incomingItems = Array.isArray(
-      (toolOutput as { items?: unknown } | null)?.items
-    )
-      ? (toolOutput as { items?: CartItem[] }).items ?? []
-      : [];
-
-    // Since we set `widgetSessionId` on the tool response, when the tool response returns
-    // widgetState should contain the state from the previous turn of conversation
-    // treat widgetState as the definitive local state, and add the new items
-    const baseState = widgetState ?? cartState ?? createDefaultCartState();
-    const baseItems = Array.isArray(baseState.items) ? baseState.items : [];
-    const incomingCartId =
-      typeof (toolOutput as { cartId?: unknown } | null)?.cartId === "string"
-        ? (toolOutput as { cartId?: string }).cartId ?? undefined
-        : undefined;
-
-    const itemsByName = new Map<string, CartItem>();
-    for (const item of baseItems) {
-      if (item?.name) {
-        itemsByName.set(item.name, item);
-      }
-    }
-    // Add in the new items to create newState
-    for (const item of incomingItems) {
-      if (item?.name) {
-        itemsByName.set(item.name, { ...itemsByName.get(item.name), ...item });
-      }
-    }
-
-    const nextItems = Array.from(itemsByName.values());
-    const nextState = {
-      ...baseState,
-      cartId: baseState.cartId ?? incomingCartId,
-      items: nextItems,
-    };
-
-    // Update cartState with the new state that includes the new items
-    // Updating cartState automatically updates window.openai.widgetState.
-    setCartState(nextState as CartWidgetState);
-  }, [toolOutput, toolResponseMetadata]);
+  // IMPORTANTE: Il carrello mostra SOLO gli items aggiunti tramite i pulsanti "Aggiungi al carrello" nei widget
+  // NON sincronizziamo da widgetState perché potrebbe contenere prodotti da altri widget (es. electronics-shop)
+  // Il carrello viene popolato direttamente tramite useWidgetState quando l'utente clicca sui pulsanti nei widget
+  
+  // Rimuoviamo completamente la sincronizzazione da widgetState per evitare prodotti indesiderati
+  // Il carrello parte sempre vuoto e viene popolato solo tramite i pulsanti "Aggiungi al carrello"
 
   function getIconForItem(name: string) {
     const words = name
@@ -256,7 +147,7 @@ function App() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => adjustQuantity(item.name, -1)}
+              onClick={() => adjustQuantity(item.id, -1)}
               className="h-8 w-8 rounded-full border border-black/30 text-lg font-semibold text-black/70 transition hover:bg-white"
               aria-label={`Decrease ${item.name}`}
             >
@@ -264,7 +155,7 @@ function App() {
             </button>
             <button
               type="button"
-              onClick={() => adjustQuantity(item.name, 1)}
+              onClick={() => adjustQuantity(item.id, 1)}
               className="h-8 w-8 rounded-full border border-black/30 text-lg font-semibold text-black/70 transition hover:bg-white"
               aria-label={`Increase ${item.name}`}
             >
@@ -275,8 +166,15 @@ function App() {
       ))}
     </div>
   ) : (
-    <div className="rounded-2xl border border-dashed border-black/40 bg-[#fffaf5] p-6 text-center text-sm text-black/60">
-      Your cart is empty. Add a few items to get started.
+    <div className="rounded-2xl border border-dashed border-black/40 bg-[#fffaf5] p-8 text-center">
+      <p className="text-base font-medium text-black/70 mb-2">
+        Carrello vuoto
+      </p>
+      <p className="text-sm text-black/60">
+        Non hai aggiunto nessun articolo al carrello.
+        <br />
+        Usa i pulsanti "Aggiungi al carrello" nei widget per aggiungere prodotti.
+      </p>
     </div>
   );
 
@@ -298,11 +196,10 @@ function App() {
             Simple cart
           </p>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Pick a few essentials
+            Il tuo carrello
           </h1>
           <p className="text-sm text-black/70">
-            Update your cart through the chat or tap to add a suggestion or
-            adjust quantities.
+            Il carrello contiene solo i prodotti che hai aggiunto tramite i pulsanti "Aggiungi al carrello" nei widget.
           </p>
         </header>
 
@@ -313,45 +210,6 @@ function App() {
             animationDelay: "80ms",
           }}
         >
-          <section className="space-y-4">
-            <header className="flex items-center justify-between">
-              <p className="text-sm font-semibold uppercase tracking-widest text-black/70">
-                Suggested items
-              </p>
-            </header>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {suggestedItems.map(({ name, description, Icon }, index) => (
-                <div
-                  key={name}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-black/20 bg-[#fffaf5] p-4"
-                  style={{
-                    animation: "fadeUp 0.5s ease-out both",
-                    animationDelay: `${120 + index * 80}ms`,
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm">
-                      <Icon className="h-7 w-7" />
-                    </div>
-                    <div>
-                      <p className="text-base font-semibold text-black">
-                        {name}
-                      </p>
-                      <p className="text-xs text-black/60">{description}</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => addItem(name)}
-                    className="rounded-full bg-amber-200 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-amber-300"
-                  >
-                    Add
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-
           <section className="space-y-4">
             <header className="flex items-center justify-between">
               <p className="text-sm font-semibold uppercase tracking-widest text-black/70">

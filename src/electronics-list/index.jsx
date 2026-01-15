@@ -1,14 +1,29 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { PlusCircle, Star } from "lucide-react";
+import { PlusCircle, Star, ShoppingCart } from "lucide-react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import { Image } from "@openai/apps-sdk-ui/components/Image";
 import { useOpenAiGlobal } from "../use-openai-global";
+import { useCart } from "../use-cart";
+import { AnimatePresence } from "framer-motion";
+import ProductDetails from "../utils/ProductDetails";
 
 function App() {
   // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
   const toolOutput = useOpenAiGlobal("toolOutput");
   const places = toolOutput?.places || [];
+  const { addToCart, isInCart } = useCart();
+  const [selectedPlace, setSelectedPlace] = React.useState(null);
+
+  const handleAddToCart = (place) => {
+    addToCart({
+      id: place.id,
+      name: place.name,
+      price: place.price,
+      description: place.description,
+      thumbnail: place.thumbnail,
+    });
+  };
 
   return (
     <div className="antialiased w-full text-black px-4 pb-2 border border-black/10 rounded-2xl sm:rounded-3xl overflow-hidden bg-white">
@@ -39,7 +54,14 @@ function App() {
           {places.slice(0, 7).map((place, i) => (
             <div
               key={place.id}
-              className="px-3 -mx-2 rounded-2xl hover:bg-black/5"
+              className="px-3 -mx-2 rounded-2xl hover:bg-black/5 cursor-pointer"
+              onClick={(e) => {
+                // Non aprire i dettagli se si clicca sul pulsante "Aggiungi al carrello" o sul selettore quantità
+                if (e.target && e.target.closest && (e.target.closest('button') || e.target.closest('input'))) {
+                  return;
+                }
+                setSelectedPlace(place);
+              }}
             >
               <div
                 style={{
@@ -86,13 +108,19 @@ function App() {
                 </div>
                 <div className="py-2 whitespace-nowrap flex justify-end">
                   <Button
-                    aria-label={`Add ${place.name}`}
-                    color="secondary"
-                    variant="ghost"
+                    aria-label={isInCart(place.id) ? `${place.name} già nel carrello` : `Aggiungi ${place.name} al carrello`}
+                    color={isInCart(place.id) ? "primary" : "secondary"}
+                    variant={isInCart(place.id) ? "soft" : "ghost"}
                     size="sm"
                     uniform
+                    onClick={() => handleAddToCart(place)}
+                    disabled={isInCart(place.id)}
                   >
-                    <PlusCircle strokeWidth={1.5} className="h-5 w-5" />
+                    {isInCart(place.id) ? (
+                      <ShoppingCart strokeWidth={1.5} className="h-5 w-5" />
+                    ) : (
+                      <PlusCircle strokeWidth={1.5} className="h-5 w-5" />
+                    )}
                   </Button>
                 </div>
               </div>
@@ -110,6 +138,15 @@ function App() {
           </Button>
         </div>
       </div>
+      <AnimatePresence>
+        {selectedPlace && (
+          <ProductDetails
+            place={selectedPlace}
+            onClose={() => setSelectedPlace(null)}
+            position="modal"
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -38,18 +38,62 @@ const SERVICE_FEE = 3;
 const DELIVERY_FEE = 2.99;
 const TAX_FEE = 3.4;
 const CONTINUE_TO_PAYMENT_EVENT = "electronics-shop:continue-to-payment";
+const MAX_PRODUCTS_SHOP = 24; // Limite massimo di prodotti da visualizzare nello shop
 
-const FILTERS: Array<{
-  id: "all" | "vegetarian" | "vegan" | "size" | "spicy";
-  label: string;
-  tag?: string;
-}> = [
-  { id: "all", label: "All" },
-  { id: "vegetarian", label: "Vegetarian", tag: "vegetarian" },
-  { id: "vegan", label: "Vegan", tag: "vegan" },
-  { id: "size", label: "Size", tag: "size" },
-  { id: "spicy", label: "Spicy", tag: "spicy" },
-];
+// Mappa delle categorie principali con i loro tag associati
+const CATEGORY_MAPPING: Record<string, string[]> = {
+  "Video & TV": [
+    "tv", "televisions", "tv accessories", "tv mounts", "projectors", 
+    "video projectors", "dvd players", "blu-ray players", "blu-ray", 
+    "video", "home theater"
+  ],
+  "Informatica": [
+    "computers", "desktop computers", "monitors", "tablets", 
+    "printers", "scanners", "computer accessories", "pc components", 
+    "input devices", "keyboards", "mice", "laptops"
+  ],
+  "Audio": [
+    "audio", "speakers", "wireless speakers", "bluetooth speakers", 
+    "headphones", "home audio", "home theater", "home theater systems", 
+    "microphones", "amplifiers", "stereos", "portable audio"
+  ],
+};
+
+// Funzione per estrarre le categorie disponibili dai prodotti
+const getAvailableCategories = (items: CartItem[]): Array<{ id: string; label: string; tags: string[] }> => {
+  const categoryCounts: Record<string, number> = {};
+  
+  // Conta quanti prodotti appartengono a ciascuna categoria
+  items.forEach((item) => {
+    const tags = item.tags ?? [];
+    Object.entries(CATEGORY_MAPPING).forEach(([category, categoryTags]) => {
+      const hasCategory = categoryTags.some((tag) =>
+        tags.some((itemTag) => itemTag.toLowerCase().includes(tag.toLowerCase()))
+      );
+      if (hasCategory) {
+        categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+      }
+    });
+  });
+  
+  // Crea filtri solo per categorie che hanno almeno un prodotto
+  const filters: Array<{ id: string; label: string; tags: string[] }> = [
+    { id: "all", label: "All", tags: [] },
+  ];
+  
+  Object.entries(CATEGORY_MAPPING)
+    .filter(([category]) => categoryCounts[category] > 0)
+    .sort(([a], [b]) => (categoryCounts[b] || 0) - (categoryCounts[a] || 0))
+    .forEach(([category, tags]) => {
+      filters.push({
+        id: category.toLowerCase().replace(/\s+/g, "-"),
+        label: category,
+        tags,
+      });
+    });
+  
+  return filters;
+};
 
 
 const cloneCartItem = (item: CartItem): CartItem => ({
@@ -474,14 +518,22 @@ function App() {
     );
   }, [resolvedSelectedCartItemId]);
 
-  const view = useOpenAiGlobal("view");
-  const viewParams = view?.params;
-  const isModalView = view?.mode === "modal";
+  // Access modal information via toolResponseMetadata if available
+  // Note: "view" is not a valid key in OpenAiGlobals, so we use toolResponseMetadata instead
+  const toolResponseMetadata = useOpenAiGlobal("toolResponseMetadata") as Record<string, unknown> | null;
+  const viewParams = toolResponseMetadata && typeof toolResponseMetadata === "object" 
+    ? (toolResponseMetadata as { params?: unknown })
+    : null;
+  const viewParamsObj = viewParams?.params && typeof viewParams.params === "object"
+    ? (viewParams.params as Record<string, unknown>)
+    : null;
+  // Check if we're in modal view by checking if params exist in toolResponseMetadata
+  const isModalView = viewParamsObj !== null;
   const checkoutFromState =
     (widgetState?.state ?? widgetProps?.widgetState?.state) === "checkout";
   const modalParams =
-    viewParams && typeof viewParams === "object"
-      ? (viewParams as {
+    viewParamsObj && typeof viewParamsObj === "object"
+      ? (viewParamsObj as {
           state?: unknown;
           cartItems?: unknown;
           subtotal?: unknown;
@@ -501,11 +553,11 @@ function App() {
   const wasModalViewRef = useRef(isModalView);
 
   useEffect(() => {
-    if (!viewParams || typeof viewParams !== "object") {
+    if (!viewParamsObj || typeof viewParamsObj !== "object") {
       return;
     }
 
-    const paramsWithSelection = viewParams as {
+    const paramsWithSelection = viewParamsObj as {
       selectedCartItemId?: unknown;
     };
 
@@ -522,7 +574,7 @@ function App() {
     if (selectedIdFromParams === null && selectedCartItemId !== null) {
       setSelectedCartItemId(null);
     }
-  }, [selectedCartItemId, viewParams]);
+  }, [selectedCartItemId, viewParamsObj]);
 
   const [hoveredCartItemId, setHoveredCartItemId] = useState<string | null>(
     null
@@ -691,6 +743,9 @@ function App() {
     [cartItems]
   );
 
+  // Genera filtri dinamici basati sui prodotti disponibili
+  const filters = useMemo(() => getAvailableCategories(cartItems), [cartItems]);
+
   const visibleCartItems = useMemo(() => {
     if (!activeFilters.length) {
       return cartItems;
@@ -700,14 +755,23 @@ function App() {
       const tags = item.tags ?? [];
 
       return activeFilters.every((filterId) => {
-        const filterMeta = FILTERS.find((filter) => filter.id === filterId);
-        if (!filterMeta?.tag) {
+        const filterMeta = filters.find((filter) => filter.id === filterId);
+        if (!filterMeta || filterId === "all" || !filterMeta.tags.length) {
           return true;
         }
-        return tags.includes(filterMeta.tag);
+        // Verifica se il prodotto ha almeno uno dei tag della categoria
+        return filterMeta.tags.some((categoryTag) =>
+          tags.some((itemTag) => itemTag.toLowerCase().includes(categoryTag.toLowerCase()))
+        );
       });
     });
-  }, [activeFilters, cartItems]);
+  }, [activeFilters, cartItems, filters]);
+
+  // Limita i prodotti visualizzati al massimo consentito
+  const displayedCartItems = useMemo(
+    () => visibleCartItems.slice(0, MAX_PRODUCTS_SHOP),
+    [visibleCartItems]
+  );
 
   const updateItemColumnPlacement = useCallback(() => {
     const gridNode = cartGridRef.current;
@@ -970,7 +1034,7 @@ function App() {
     return () => {
       cancelAnimationFrame(raf);
     };
-  }, [updateItemColumnPlacement, visibleCartItems]);
+  }, [updateItemColumnPlacement, displayedCartItems]);
 
   const selectedCartItem = useMemo(() => {
     if (selectedCartItemId == null) {
@@ -1040,7 +1104,7 @@ function App() {
             <div className="text-lg text-black/70">Results</div>
           )}
           <nav className="flex flex-wrap items-center gap-2">
-            {FILTERS.map((filter) => {
+            {filters.map((filter) => {
               const isActive =
                 filter.id === "all"
                   ? activeFilters.length === 0
@@ -1074,14 +1138,14 @@ function App() {
           )}
         >
           <AnimatePresence initial={false} mode="popLayout">
-            {visibleCartItems.map((item, index) => {
+            {displayedCartItems.map((item, index) => {
               const isHovered = hoveredCartItemId === item.id;
               const shortDescription =
                 item.shortDescription ?? item.description.split(".")[0];
               const columnCount = Math.max(gridColumnCount, 1);
               const rowStartIndex =
                 Math.floor(index / columnCount) * columnCount;
-              const itemsRemaining = visibleCartItems.length - rowStartIndex;
+              const itemsRemaining = displayedCartItems.length - rowStartIndex;
               const rowSize = Math.min(columnCount, itemsRemaining);
               const positionInRow = index - rowStartIndex;
 

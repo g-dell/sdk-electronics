@@ -5,6 +5,8 @@ import { ArrowLeft, ArrowRight, Flame } from "lucide-react";
 import { useWidgetProps } from "../use-widget-props";
 import { useOpenAiGlobal } from "../use-openai-global";
 import SliceCard from "./SliceCard";
+import { AnimatePresence } from "framer-motion";
+import ProductDetails from "../utils/ProductDetails";
 
 function App() {
   // Note: This widget is for electronics search
@@ -14,6 +16,7 @@ function App() {
   // Leggi dati da toolOutput (popolato dal server quando recupera dati da MotherDuck)
   const toolOutput = useOpenAiGlobal("toolOutput");
   const places = toolOutput?.places || [];
+  const [selectedPlace, setSelectedPlace] = React.useState(null);
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: "start",
     loop: false,
@@ -68,7 +71,12 @@ function App() {
         <div className="overflow-hidden" ref={emblaRef}>
           <div className="flex gap-4 items-stretch">
             {places.map((place, index) => (
-              <SliceCard key={place.id} place={place} index={index} />
+              <SliceCard 
+                key={place.id} 
+                place={place} 
+                index={index} 
+                onCardClick={setSelectedPlace}
+              />
             ))}
           </div>
         </div>
@@ -111,6 +119,15 @@ function App() {
           </button>
         )}
       </div>
+      <AnimatePresence>
+        {selectedPlace && (
+          <ProductDetails
+            place={selectedPlace}
+            onClose={() => setSelectedPlace(null)}
+            position="modal"
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

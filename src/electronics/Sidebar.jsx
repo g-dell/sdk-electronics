@@ -1,14 +1,27 @@
 import React from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import { useOpenAiGlobal } from "../use-openai-global";
-import { Settings2, Star } from "lucide-react";
+import { Settings2, Star, ShoppingCart } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
 import SafeImage from "./SafeImage";
 import { useProxyBaseUrl } from "../use-proxy-base-url";
+import { useCart } from "../use-cart";
 
 function PlaceListItem({ place, isSelected, onClick }) {
   const proxyBaseUrl = useProxyBaseUrl();
+  const { addToCart, isInCart } = useCart();
+
+  const handleAddToCart = (e) => {
+    e.stopPropagation();
+    addToCart({
+      id: place.id,
+      name: place.name,
+      price: place.price,
+      description: place.description,
+      thumbnail: place.thumbnail,
+    });
+  };
   return (
     <div
       className={
@@ -31,7 +44,7 @@ function PlaceListItem({ place, isSelected, onClick }) {
             className="h-16 w-16 rounded-lg object-cover flex-none"
             proxyBaseUrl={proxyBaseUrl}
           />
-          <div className="min-w-0 text-left">
+          <div className="min-w-0 text-left flex-1">
             <div className="font-medium truncate">{place.name}</div>
             <div className="text-xs text-black/50 truncate">
               {place.description}
@@ -41,6 +54,19 @@ function PlaceListItem({ place, isSelected, onClick }) {
               {place.rating.toFixed(1)}
               {place.price ? <span className="">· {place.price}</span> : null}
             </div>
+          </div>
+          <div className="flex-none">
+            <Button
+              color={isInCart(place.id) ? "primary" : "secondary"}
+              variant={isInCart(place.id) ? "soft" : "ghost"}
+              size="sm"
+              uniform
+              onClick={handleAddToCart}
+              disabled={isInCart(place.id)}
+              aria-label={isInCart(place.id) ? `${place.name} già nel carrello` : `Aggiungi ${place.name} al carrello`}
+            >
+              <ShoppingCart className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </div>

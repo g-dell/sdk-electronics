@@ -4,7 +4,7 @@ This directory packages a Python implementation of the Electronics MCP server us
 
 ## Version
 
-- **Server Version**: 1.0.0
+- **Server Version**: 1.1.0
 - **MCP Protocol Version**: 2024-11-05 (Current)
 
 ## Backward Compatibility Policy
@@ -106,11 +106,23 @@ Logs do not contain sensitive information (no tokens, user data, or PII).
 The server exposes the following tools:
 
 - `electronics-map`: Interactive map of electronics stores
-- `electronics-carousel`: Product carousel widget
+- `electronics-carousel`: Product carousel widget (max 6 products, shows only requested category)
 - `electronics-albums`: Product gallery widget
 - `electronics-list`: Product list widget
 - `electronics-shop`: Full electronics shop interface
 - `product-list`: Retrieve products from MotherDuck database
+- `shopping-cart`: Shopping cart widget (displays products added via "Add to Cart" buttons)
+
+### Shopping Cart System
+
+All product widgets (`electronics-carousel`, `electronics-list`, `electronics-albums`, `electronics-map`, `mixed-auth-search`) include "Aggiungi al carrello" (Add to Cart) buttons. Products added via these buttons are stored in a shared cart state using the `sharedCartItems` key in `widgetState`, which is isolated from other widgets like `electronics-shop`.
+
+The cart:
+- Starts empty by default
+- Only shows products explicitly added via "Add to Cart" buttons
+- Persists across widget interactions
+- Uses unique product IDs to prevent duplicates
+- Includes debouncing to prevent accidental multiple additions
 
 ## Next steps
 
