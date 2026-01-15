@@ -4,6 +4,7 @@ import { Button } from "@openai/apps-sdk-ui/components/Button";
 import SafeImage from "../electronics/SafeImage.jsx";
 import { useProxyBaseUrl } from "../use-proxy-base-url";
 import { useCart } from "../use-cart";
+import type { CartItem } from "../types";
 
 type ProductDetailsProps = {
   place: {
@@ -18,15 +19,40 @@ type ProductDetailsProps = {
   } | null;
   onClose: () => void;
   position?: "modal" | "sidebar" | "overlay";
+  relatedItems?: CartItem[];
+  onSelectRelated?: (item: CartItem) => void;
+  relatedTitle?: string;
 };
 
 /**
  * Componente riutilizzabile per mostrare i dettagli di un prodotto
  * Può essere usato come modal, sidebar o overlay
  */
-export default function ProductDetails({ place, onClose, position = "modal" }: ProductDetailsProps) {
+export default function ProductDetails({
+  place,
+  onClose,
+  position = "modal",
+  relatedItems,
+  onSelectRelated,
+  relatedTitle,
+}: ProductDetailsProps) {
   const proxyBaseUrl = useProxyBaseUrl();
   const { addToCart, isInCart } = useCart();
+
+  const safeRelatedItems = Array.isArray(relatedItems)
+    ? relatedItems.slice(0, 3)
+    : [];
+  const shouldShowRelated = safeRelatedItems.length > 0;
+
+  const getBadgeText = (item: CartItem) => {
+    const candidate =
+      item.detailSummary ??
+      item.highlights?.[0] ??
+      item.shortDescription ??
+      item.tags?.[0] ??
+      "";
+    return candidate?.trim();
+  };
 
   const handleAddToCart = () => {
     if (!place) return;
@@ -175,6 +201,54 @@ export default function ProductDetails({ place, onClose, position = "modal" }: P
                 ))}
               </ul>
             </div>
+            {shouldShowRelated ? (
+              <div className="px-4 sm:px-5 pb-5">
+                <div className="text-lg font-medium mb-2">
+                  {relatedTitle ?? "Ti potrebbe interessare anche"}
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {safeRelatedItems.map((item) => {
+                    const badgeText = getBadgeText(item);
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="text-left"
+                        aria-label={`Open details for ${item.name}`}
+                        onClick={() => onSelectRelated?.(item)}
+                        disabled={!onSelectRelated}
+                      >
+                        <div className="overflow-hidden rounded-2xl border border-black/5 bg-white transition hover:border-black/20">
+                          <div className="relative h-24 w-full overflow-hidden">
+                            <SafeImage
+                              src={item.image}
+                              alt={item.name}
+                              className="h-full w-full object-cover"
+                              proxyBaseUrl={proxyBaseUrl}
+                            />
+                            <div className="absolute inset-0 bg-black/[0.04]" />
+                          </div>
+                          <div className="p-3">
+                            <p className="text-sm font-medium line-clamp-2">
+                              {item.name}
+                            </p>
+                            <p className="text-sm text-black/70 mt-1">
+                              ${item.price.toFixed(2)}
+                            </p>
+                            {badgeText ? (
+                              <span className="mt-2 inline-flex max-w-full items-center rounded-full bg-black/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-black/70 line-clamp-1">
+                                {badgeText}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
         </motion.div>
       </motion.div>

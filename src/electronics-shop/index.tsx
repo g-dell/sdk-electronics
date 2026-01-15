@@ -60,6 +60,118 @@ const CATEGORY_MAPPING: Record<string, string[]> = {
   ],
 };
 
+const RELATED_ITEMS_LIMIT = 3;
+const RELATED_PRICE_RANGE = 0.3;
+
+const getCategoryScore = (item: CartItem, categoryTags: string[]) => {
+  const tags = item.tags ?? [];
+  return categoryTags.reduce((score, categoryTag) => {
+    const hasMatch = tags.some((tag) =>
+      tag.toLowerCase().includes(categoryTag.toLowerCase())
+    );
+    return score + (hasMatch ? 1 : 0);
+  }, 0);
+};
+
+const getPrimaryCategory = (item: CartItem) => {
+  let best: { category: string; score: number } | null = null;
+
+  Object.entries(CATEGORY_MAPPING).forEach(([category, categoryTags]) => {
+    const score = getCategoryScore(item, categoryTags);
+    if (score > 0 && (!best || score > best.score)) {
+      best = { category, score };
+    }
+  });
+
+  return best?.category ?? null;
+};
+
+const getCpuTier = (text: string) => {
+  const match = text.match(/\b(i[3579]|ryzen\s*[3579])\b/i);
+  if (!match) {
+    return 0;
+  }
+
+  const token = match[1].toLowerCase().replace(/\s+/g, "");
+  if (token.includes("i9") || token.includes("ryzen9")) {
+    return 4;
+  }
+  if (token.includes("i7") || token.includes("ryzen7")) {
+    return 3;
+  }
+  if (token.includes("i5") || token.includes("ryzen5")) {
+    return 2;
+  }
+  if (token.includes("i3") || token.includes("ryzen3")) {
+    return 1;
+  }
+  return 0;
+};
+
+const getRelatedItems = (current: CartItem, items: CartItem[]) => {
+  const category = getPrimaryCategory(current);
+  if (!category) {
+    return [];
+  }
+
+  const categoryTags = CATEGORY_MAPPING[category] ?? [];
+  const currentText = [
+    current.name,
+    current.shortDescription,
+    current.detailSummary,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const currentTier = getCpuTier(currentText);
+  const priceBand = Math.max(current.price * RELATED_PRICE_RANGE, 15);
+
+  const candidates = items.filter(
+    (item) =>
+      item.id !== current.id && getCategoryScore(item, categoryTags) > 0
+  );
+
+  const scored = candidates.map((item) => {
+    const candidateText = [
+      item.name,
+      item.shortDescription,
+      item.detailSummary,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const candidateTier = getCpuTier(candidateText);
+
+    const priceDelta = Math.abs(item.price - current.price);
+    const priceScore =
+      priceDelta <= priceBand ? 1 - priceDelta / priceBand : -0.5;
+
+    const isUpgrade =
+      candidateTier > currentTier && item.price <= current.price * 1.2;
+    const isBetterValue = item.price <= current.price;
+
+    const tagScore = Math.min(3, getCategoryScore(item, categoryTags)) * 0.2;
+
+    return {
+      item,
+      isPreferred: isUpgrade || isBetterValue,
+      score:
+        priceScore +
+        tagScore +
+        (isUpgrade ? 0.6 : 0) +
+        (isBetterValue ? 0.3 : 0),
+    };
+  });
+
+  return scored
+    .sort((a, b) => {
+      if (a.isPreferred !== b.isPreferred) {
+        return a.isPreferred ? -1 : 1;
+      }
+      return b.score - a.score;
+    })
+    .slice(0, RELATED_ITEMS_LIMIT)
+    .map((entry) => entry.item);
+};
+
 // Funzione per estrarre le categorie disponibili dai prodotti
 const getAvailableCategories = (items: CartItem[]): Array<{ id: string; label: string; tags: string[] }> => {
   const categoryCounts: Record<string, number> = {};
@@ -1066,6 +1178,13 @@ function App() {
     };
   }, [selectedProduct]);
 
+  const relatedItems = useMemo(() => {
+    if (!selectedProduct) {
+      return [];
+    }
+    return getRelatedItems(selectedProduct, cartItems);
+  }, [selectedProduct, cartItems]);
+
   useEffect(() => {
     if (isCheckoutRoute) {
       return;
@@ -1454,6 +1573,8 @@ function App() {
             place={selectedProductDetails}
             onClose={() => setSelectedProduct(null)}
             position="modal"
+            relatedItems={relatedItems}
+            onSelectRelated={(item) => setSelectedProduct(item)}
           />
         )}
       </AnimatePresence>
