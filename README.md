@@ -48,6 +48,10 @@ This example contains multiple components showing multiple types of views and in
 
 This example uses the [Apps SDK UI library](https://github.com/openai/apps-sdk-ui) for simple components such as images, buttons, and badges.
 
+### Electronics product modal
+
+The `electronics-shop` widget includes a product details modal that can surface up to three related products. Related items are selected using same-category signals when available, and fall back to text overlap and nearby price range when categories are missing.
+
 ### Kitchen sink lite overview
 
 The kitchen sink lite sample shows the full `window.openai` surface working together:

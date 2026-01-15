@@ -44,6 +44,8 @@ export default function ProductDetails({
     : [];
   const shouldShowRelated = safeRelatedItems.length > 0;
 
+  const formatPrice = (value: number) => `€${value.toFixed(2)}`;
+
   const getBadgeText = (item: CartItem) => {
     const candidate =
       item.detailSummary ??
@@ -234,7 +236,7 @@ export default function ProductDetails({
                               {item.name}
                             </p>
                             <p className="text-sm text-black/70 mt-1">
-                              ${item.price.toFixed(2)}
+                              {formatPrice(item.price)}
                             </p>
                             {badgeText ? (
                               <span className="mt-2 inline-flex max-w-full items-center rounded-full bg-black/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-black/70 line-clamp-1">
