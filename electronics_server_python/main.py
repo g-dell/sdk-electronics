@@ -656,16 +656,11 @@ def transform_products_to_places(
         elif isinstance(product.get("prices"), dict):
             price_num = product.get("prices", {}).get("amountMax", 0)
         
-        # Converti prezzo in formato stringa ($, $$, $$$)
+        # Converti prezzo in formato stringa in euro (es. 34,59€)
         if isinstance(price_num, (int, float)) and price_num > 0:
-            if price_num < 50:
-                price_str = "$"
-            elif price_num < 100:
-                price_str = "$$"
-            else:
-                price_str = "$$$"
+            price_str = f"{price_num:.2f}".replace(".", ",") + "€"
         else:
-            price_str = "$$"  # Default
+            price_str = ""
         
         # Genera coordinate usando pattern circolare sulle coordinate default
         coords = default_coords[idx % len(default_coords)]

@@ -125,7 +125,7 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
   - **Soluzione implementata**:
     1. ✅ **Funzione di trasformazione prodotti->places** (`electronics_server_python/main.py`):
        - Creata funzione `transform_products_to_places()` che converte prodotti dal database in formato "places"
-       - Mappa i campi: `id`, `name`, `price` (numero → stringa $/$$/$$$), `description`, `image` → `thumbnail`
+      - Mappa i campi: `id`, `name`, `price` (numero → stringa in euro, es. `34,59€`), `description`, `image` → `thumbnail`
        - Genera valori default per campi mancanti:
          - `coords`: Coordinate di default per San Francisco (distribuite in diverse zone)
          - `city`: Nome città di default basato su pattern circolare
