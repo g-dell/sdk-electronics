@@ -1,50 +1,10 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { useOpenAiGlobal } from "../use-openai-global";
+import { AnimatePresence } from "framer-motion";
 import { useCart } from "../use-cart";
 import { AvocadoIcon, BreadIcon, EggIcon, JarIcon, TomatoIcon } from "./icons";
 import type { CartItem } from "../types";
-
-type CartWidgetState = {
-  cartId?: string;
-  items?: CartItem[];
-  [key: string]: unknown;
-};
-
-const createDefaultCartState = (): CartWidgetState => ({
-  items: [],
-});
-
-function usePrettyJson(value: unknown): string {
-  return useMemo(() => {
-    if (value === undefined || value === null) {
-      return "null";
-    }
-
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch (error) {
-      return `<<unable to render: ${error}>>`;
-    }
-  }, [value]);
-}
-
-function JsonPanel({ label, value }: { label: string; value: unknown }) {
-  const pretty = usePrettyJson(value);
-
-  return (
-    <section className="rounded-2xl border border-black/20 bg-[#fffaf5] p-4">
-      <header className="mb-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/60">
-          {label}
-        </p>
-      </header>
-      <pre className="max-h-64 overflow-auto rounded-xl bg-white p-3 font-mono text-xs text-black/70 shadow-sm">
-        {pretty}
-      </pre>
-    </section>
-  );
-}
+import ProductDetails from "../utils/ProductDetails";
 
 const iconMatchers = [
   { keywords: ["egg", "eggs"], Icon: EggIcon },
@@ -54,17 +14,11 @@ const iconMatchers = [
 ];
 
 function App() {
-  // NOTA: toolOutput e toolResponseMetadata sono usati solo per debug, non per popolare il carrello
-  const toolOutput = useOpenAiGlobal("toolOutput");
-  const toolResponseMetadata = useOpenAiGlobal("toolResponseMetadata");
-  
   // IMPORTANTE: shopping-cart usa useCart che gestisce il carrello condiviso tramite la chiave specifica "sharedCartItems"
   // Questo garantisce che il carrello mostri SOLO i prodotti aggiunti tramite i pulsanti "Aggiungi al carrello"
   // Ignora completamente qualsiasi altro dato in widgetState (es. da electronics-shop)
   const { cartItems, addToCart, removeFromCart } = useCart();
-  
-  // Mantieni cartState per compatibilità con il codice esistente (per debug)
-  const cartState = useMemo(() => ({ items: cartItems }), [cartItems]);
+  const [selectedItem, setSelectedItem] = useState<CartItem | null>(null);
   const animationStyles = `
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(10px); }
@@ -129,6 +83,16 @@ function App() {
         <div
           key={item.name}
           className="flex items-center justify-between rounded-2xl border border-black/20 bg-[#fffaf5] p-3"
+          role="button"
+          tabIndex={0}
+          aria-label={`View details for ${item.name}`}
+          onClick={() => setSelectedItem(item)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setSelectedItem(item);
+            }
+          }}
         >
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm">
@@ -147,7 +111,10 @@ function App() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => adjustQuantity(item.id, -1)}
+              onClick={(event) => {
+                event.stopPropagation();
+                adjustQuantity(item.id, -1);
+              }}
               className="h-8 w-8 rounded-full border border-black/30 text-lg font-semibold text-black/70 transition hover:bg-white"
               aria-label={`Decrease ${item.name}`}
             >
@@ -155,7 +122,10 @@ function App() {
             </button>
             <button
               type="button"
-              onClick={() => adjustQuantity(item.id, 1)}
+              onClick={(event) => {
+                event.stopPropagation();
+                adjustQuantity(item.id, 1);
+              }}
               className="h-8 w-8 rounded-full border border-black/30 text-lg font-semibold text-black/70 transition hover:bg-white"
               aria-label={`Increase ${item.name}`}
             >
@@ -229,20 +199,23 @@ function App() {
             </button>
           </section>
         </div>
-
-        <section className="space-y-3">
-          <header className="flex items-center justify-between">
-            <p className="text-sm font-semibold uppercase tracking-widest text-black/70">
-              Widget state & output
-            </p>
-            <span className="text-xs text-black/60">Debug view</span>
-          </header>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <JsonPanel label="window.openai.widgetState" value={cartState} />
-            <JsonPanel label="window.openai.toolOutput" value={toolOutput} />
-          </div>
-        </section>
       </div>
+      <AnimatePresence>
+        {selectedItem && (
+          <ProductDetails
+            place={{
+              id: selectedItem.id,
+              name: selectedItem.name,
+              price: `$${selectedItem.price.toFixed(2)}`,
+              description: selectedItem.description,
+              thumbnail: selectedItem.image,
+              stock: selectedItem.stock,
+            }}
+            onClose={() => setSelectedItem(null)}
+            position="modal"
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

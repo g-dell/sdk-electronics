@@ -1,8 +1,7 @@
-import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, X, ShoppingCart } from "lucide-react";
 import { Button } from "@openai/apps-sdk-ui/components/Button";
-import SafeImage from "../electronics/SafeImage";
+import SafeImage from "../electronics/SafeImage.jsx";
 import { useProxyBaseUrl } from "../use-proxy-base-url";
 import { useCart } from "../use-cart";
 
@@ -81,7 +80,7 @@ export default function ProductDetails({ place, onClose, position = "modal" }: P
           <Button
             aria-label="Close details"
             className="inline-flex absolute z-10 top-4 left-4 xl:top-4 xl:left-4 shadow-xl rounded-full p-2 bg-white ring ring-black/10 xl:shadow-2xl hover:bg-white"
-            variant="soft"
+            variant="solid"
             color="secondary"
             size="sm"
             uniform
