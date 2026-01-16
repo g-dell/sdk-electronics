@@ -1656,9 +1656,9 @@ def _compute_checkout_totals(
         discount = int(subtotal * 0.10)
 
     taxable_base = max(0, subtotal - discount)
-    tax = int(round(taxable_base * 0.22))
+    tax = 0
     shipping = 500 if currency.upper() == "EUR" and (subtotal / 100.0) < 50.0 else 0
-    grand = max(0, taxable_base + tax + shipping)
+    grand = max(0, taxable_base + shipping)
 
     return CheckoutCartTotals(
         subtotal_minor=subtotal,

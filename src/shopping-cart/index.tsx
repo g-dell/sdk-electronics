@@ -173,10 +173,9 @@ function App() {
     );
     const discount = 0;
     const taxableBase = Math.max(0, subtotal - discount);
-    const tax = Number((taxableBase * 0.22).toFixed(2));
     const shipping = subtotal < 50 ? 5 : 0;
-    const total = Number((taxableBase + tax + shipping).toFixed(2));
-    return { subtotal, discount, tax, shipping, total };
+    const total = Number((taxableBase + shipping).toFixed(2));
+    return { subtotal, discount, tax: 0, shipping, total };
   }
 
   function formatCurrency(value: number, currency = "EUR") {
@@ -514,10 +513,6 @@ function App() {
                     <span>{formatCurrency(purchaseSummary.discount)}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>IVA (22%)</span>
-                    <span>{formatCurrency(purchaseSummary.tax)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
                     <span>Spedizione</span>
                     <span>{formatCurrency(purchaseSummary.shipping)}</span>
                   </div>
@@ -549,6 +544,15 @@ function App() {
             {itemCards}
             {!purchaseSummary && (
               <>
+                <div className="rounded-2xl border border-black/10 bg-white/70 px-4 py-3 text-sm text-black/70">
+                  I prezzi includono IVA. Spedizione:{" "}
+                  <span className="font-semibold">
+                    {formatCurrency(computeTotals(cartItems).shipping)}
+                  </span>{" "}
+                  {computeTotals(cartItems).shipping > 0
+                    ? "(gratis sopra 50€)"
+                    : "(già inclusa)"}
+                </div>
                 <button
                   type="button"
                   disabled={cartItems.length === 0 || isCheckingOut}

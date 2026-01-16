@@ -1454,7 +1454,7 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 
 ⚠️ **Widget Interattivi**: I tool `electronics-map`, `electronics-carousel`, `electronics-albums`, `electronics-list`, e `electronics-shop` restituiscono widget HTML interattivi che vengono visualizzati direttamente nella chat. Questi widget permettono all'utente di interagire visivamente con i prodotti.
 
-⚠️ **Carrello e Checkout**: Il tool `electronics-shop` include funzionalità complete di carrello con possibilità di aggiungere/rimuovere prodotti, selezionare quantità, filtrare per categoria (Video & TV, Informatica, Audio), e procedere al checkout. Usalo quando l'utente è pronto ad acquistare. Il widget `shopping-cart` completa il pagamento simulato, **svuota il carrello** e mostra un **riepilogo post-acquisto** con prodotti, totali, dati fattura e data di consegna. Il pulsante "Procedi al pagamento" apre una **modale** per inserire i dati di fatturazione.
+⚠️ **Carrello e Checkout**: Il tool `electronics-shop` include funzionalità complete di carrello con possibilità di aggiungere/rimuovere prodotti, selezionare quantità, filtrare per categoria (Video & TV, Informatica, Audio), e procedere al checkout. Usalo quando l'utente è pronto ad acquistare. Il widget `shopping-cart` completa il pagamento simulato, **svuota il carrello** e mostra un **riepilogo post-acquisto** con prodotti, totali, dati fattura e data di consegna. Il pulsante "Procedi al pagamento" apre una **modale** per inserire i dati di fatturazione. I prezzi includono IVA; la spedizione è mostrata nel carrello (gratis sopra 50€).
 
 ⚠️ **Database in Tempo Reale**: Il tool `product-list` recupera dati in tempo reale dal database MotherDuck (`app_gpt_elettronica`). I dati sono sempre aggiornati e includono tutti i dettagli tecnici necessari per confronti e analisi.
 
@@ -1615,6 +1615,18 @@ Questa sezione documenta le migliorie implementate per migliorare l'esperienza u
     1. ✅ **Pulsante checkout**: apre la modale per l'inserimento dei dati.
     2. ✅ **Conferma e paga**: avvia il flusso di pagamento e chiude la modale al successo.
   - **File modificati**:
+    - `src/shopping-cart/index.tsx`
+
+### 11.7 Spedizione visibile e IVA inclusa
+
+- [x] **Totali senza IVA esplicita**: L'IVA è considerata inclusa nei prezzi di listino; il carrello non aggiunge IVA al totale.
+  - **Completato**: [2026-01-16] Rimossa IVA dal calcolo dei totali, mantenuta la spedizione.
+  - **Implementazione**:
+    1. ✅ **Backend**: Calcolo dei totali con `tax = 0` in `electronics_server_python/main.py`.
+    2. ✅ **Frontend**: Totali e riepilogo senza riga IVA in `src/shopping-cart/index.tsx`.
+    3. ✅ **Messaggio cliente**: Spedizione mostrata nel carrello con nota "IVA inclusa".
+  - **File modificati**:
+    - `electronics_server_python/main.py`
     - `src/shopping-cart/index.tsx`
 
 - [x] **Compatibilità import JSX in TSX**: Garantita la risoluzione dei componenti `.jsx` importati in file TypeScript.
