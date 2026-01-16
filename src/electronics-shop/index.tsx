@@ -831,7 +831,6 @@ function App() {
             ...(anchor ? { anchor } : {}),
           });
         } catch (error) {
-          console.error("Failed to open checkout modal", error);
         }
       })();
     },
@@ -1139,7 +1138,6 @@ function App() {
             new CustomEvent(CONTINUE_TO_PAYMENT_EVENT, { detail })
           );
         } catch (error) {
-          console.error("Failed to dispatch checkout navigation event", error);
         }
       }
 
@@ -1181,7 +1179,6 @@ function App() {
     try {
       await window?.openai?.requestDisplayMode?.({ mode: "fullscreen" });
     } catch (error) {
-      console.error("Failed to request fullscreen display mode", error);
     }
   }, []);
 

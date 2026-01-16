@@ -17,11 +17,37 @@ function App() {
   // IMPORTANTE: shopping-cart usa useCart che gestisce il carrello condiviso tramite la chiave specifica "sharedCartItems"
   // Questo garantisce che il carrello mostri SOLO i prodotti aggiunti tramite i pulsanti "Aggiungi al carrello"
   // Ignora completamente qualsiasi altro dato in widgetState (es. da electronics-shop)
-  const { cartItems, addToCart, removeFromCart } = useCart();
+  const { cartItems, addToCart, removeFromCart, clearCart } = useCart();
   const [selectedItem, setSelectedItem] = useState<CartItem | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutStatus, setCheckoutStatus] = useState<"success" | "cancel" | null>(null);
+  const [showBillingModal, setShowBillingModal] = useState(false);
+  const [purchaseSummary, setPurchaseSummary] = useState<{
+    items: Array<{
+      id: string;
+      name: string;
+      quantity: number;
+      unitPrice: number;
+      lineTotal: number;
+    }>;
+    subtotal: number;
+    discount: number;
+    tax: number;
+    shipping: number;
+    total: number;
+    currency: string;
+    buyer: {
+      email: string;
+      name: string;
+      address1: string;
+      address2: string;
+      city: string;
+      postalCode: string;
+      country: string;
+    };
+    deliveryDate: string;
+  } | null>(null);
   const [customerEmail, setCustomerEmail] = useState("");
   const [billingName, setBillingName] = useState("");
   const [billingAddress1, setBillingAddress1] = useState("");
@@ -140,6 +166,41 @@ function App() {
     return null;
   }
 
+  function computeTotals(items: CartItem[]) {
+    const subtotal = items.reduce(
+      (sum, item) => sum + (item.price ?? 0) * (item.quantity ?? 0),
+      0
+    );
+    const discount = 0;
+    const taxableBase = Math.max(0, subtotal - discount);
+    const tax = Number((taxableBase * 0.22).toFixed(2));
+    const shipping = subtotal < 50 ? 5 : 0;
+    const total = Number((taxableBase + tax + shipping).toFixed(2));
+    return { subtotal, discount, tax, shipping, total };
+  }
+
+  function formatCurrency(value: number, currency = "EUR") {
+    try {
+      return new Intl.NumberFormat("it-IT", {
+        style: "currency",
+        currency,
+      }).format(value);
+    } catch {
+      return `${value.toFixed(2)} ${currency}`;
+    }
+  }
+
+  function randomDeliveryDate() {
+    const daysToAdd = Math.floor(Math.random() * 5) + 3; // 3-7 days
+    const date = new Date();
+    date.setDate(date.getDate() + daysToAdd);
+    return date.toLocaleDateString("it-IT", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+    });
+  }
+
   function extractSessionId(response: unknown): string | null {
     const structured = extractStructuredContent(response);
     if (structured && typeof structured.id === "string") {
@@ -245,6 +306,39 @@ function App() {
       }
 
       if (status === "succeeded") {
+        const itemsSnapshot = cartItems.map((item) => {
+          const quantity = item.quantity ?? 1;
+          const unitPrice = item.price ?? 0;
+          return {
+            id: item.id,
+            name: item.name,
+            quantity,
+            unitPrice,
+            lineTotal: unitPrice * quantity,
+          };
+        });
+        const totals = computeTotals(cartItems);
+        setPurchaseSummary({
+          items: itemsSnapshot,
+          subtotal: totals.subtotal,
+          discount: totals.discount,
+          tax: totals.tax,
+          shipping: totals.shipping,
+          total: totals.total,
+          currency: "EUR",
+          buyer: {
+            email: customerEmail.trim(),
+            name: billingName.trim(),
+            address1: billingAddress1.trim(),
+            address2: billingAddress2.trim(),
+            city: billingCity.trim(),
+            postalCode: billingPostalCode.trim(),
+            country: billingCountry.trim(),
+          },
+          deliveryDate: randomDeliveryDate(),
+        });
+        clearCart();
+        setShowBillingModal(false);
         setCheckoutStatus("success");
       } else {
         setCheckoutStatus("cancel");
@@ -383,12 +477,119 @@ function App() {
                   : "Pagamento annullato. Puoi riprovare quando vuoi."}
               </div>
             )}
+            {purchaseSummary && (
+              <div className="rounded-2xl border border-black/10 bg-white/80 p-4">
+                <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-black/60">
+                  Riepilogo acquisto
+                </h2>
+                <p className="mt-2 text-sm text-black/70">
+                  Grazie per aver acquistato da noi! La consegna è prevista per{" "}
+                  <span className="font-semibold">{purchaseSummary.deliveryDate}</span>.
+                </p>
+                <div className="mt-4 space-y-3">
+                  {purchaseSummary.items.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between rounded-xl border border-black/5 bg-white px-3 py-2 text-sm"
+                    >
+                      <div>
+                        <p className="font-medium text-black/80">{item.name}</p>
+                        <p className="text-xs text-black/60">
+                          Quantità: {item.quantity}
+                        </p>
+                      </div>
+                      <div className="text-right text-sm font-semibold text-black/70">
+                        {formatCurrency(item.lineTotal)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-2 text-sm text-black/70">
+                  <div className="flex items-center justify-between">
+                    <span>Subtotale</span>
+                    <span>{formatCurrency(purchaseSummary.subtotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Sconto</span>
+                    <span>{formatCurrency(purchaseSummary.discount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>IVA (22%)</span>
+                    <span>{formatCurrency(purchaseSummary.tax)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Spedizione</span>
+                    <span>{formatCurrency(purchaseSummary.shipping)}</span>
+                  </div>
+                  <div className="flex items-center justify-between font-semibold text-black">
+                    <span>Totale</span>
+                    <span>{formatCurrency(purchaseSummary.total)}</span>
+                  </div>
+                </div>
+                <div className="mt-4 rounded-xl border border-black/5 bg-white px-3 py-2 text-sm text-black/70">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-black/50">
+                    Dati di fatturazione
+                  </p>
+                  <p className="mt-2">{purchaseSummary.buyer.name || "Cliente"}</p>
+                  <p>{purchaseSummary.buyer.email}</p>
+                  <p>{purchaseSummary.buyer.address1}</p>
+                  {purchaseSummary.buyer.address2 ? (
+                    <p>{purchaseSummary.buyer.address2}</p>
+                  ) : null}
+                  <p>
+                    {purchaseSummary.buyer.postalCode} {purchaseSummary.buyer.city}
+                  </p>
+                  <p>{purchaseSummary.buyer.country}</p>
+                </div>
+                <p className="mt-4 text-sm text-black/70">
+                  Se hai bisogno di assistenza, rispondi a questa chat e saremo felici di aiutarti.
+                </p>
+              </div>
+            )}
             {itemCards}
-            <div className="rounded-2xl border border-black/10 bg-white/70 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/60">
-                Dati per il checkout
-              </p>
-              <div className="mt-3 grid gap-3">
+            {!purchaseSummary && (
+              <>
+                <button
+                  type="button"
+                  disabled={cartItems.length === 0 || isCheckingOut}
+                  onClick={() => setShowBillingModal(true)}
+                  className="w-full rounded-2xl border border-black/30 bg-white py-3 text-sm font-semibold text-black/70 transition hover:border-black/50 disabled:cursor-not-allowed disabled:opacity-70"
+                  aria-busy={isCheckingOut}
+                >
+                  {isCheckingOut ? "Apertura checkout..." : "Procedi al pagamento"}
+                </button>
+                {checkoutError && (
+                  <p className="text-xs text-red-600" role="alert">
+                    {checkoutError}
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+      </div>
+      <AnimatePresence>
+        {showBillingModal && !purchaseSummary && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Dati per il checkout"
+          >
+            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-black/60">
+                  Dati per il checkout
+                </p>
+                <button
+                  type="button"
+                  className="rounded-full border border-black/10 px-2 py-1 text-xs text-black/60 hover:border-black/30"
+                  onClick={() => setShowBillingModal(false)}
+                >
+                  Chiudi
+                </button>
+              </div>
+              <div className="mt-4 grid gap-3">
                 <label className="text-xs font-semibold text-black/70">
                   Email
                   <input
@@ -463,25 +664,32 @@ function App() {
                   />
                 </label>
               </div>
+              {checkoutError && (
+                <p className="mt-3 text-xs text-red-600" role="alert">
+                  {checkoutError}
+                </p>
+              )}
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-xl border border-black/20 px-4 py-2 text-xs text-black/60"
+                  onClick={() => setShowBillingModal(false)}
+                >
+                  Annulla
+                </button>
+                <button
+                  type="button"
+                  disabled={isCheckingOut}
+                  onClick={handleCheckout}
+                  className="rounded-xl border border-black/30 bg-black px-4 py-2 text-xs font-semibold text-white disabled:opacity-70"
+                  aria-busy={isCheckingOut}
+                >
+                  {isCheckingOut ? "Pagamento in corso..." : "Conferma e paga"}
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              disabled={cartItems.length === 0 || isCheckingOut}
-              onClick={handleCheckout}
-              className="w-full rounded-2xl border border-black/30 bg-white py-3 text-sm font-semibold text-black/70 transition hover:border-black/50 disabled:cursor-not-allowed disabled:opacity-70"
-              aria-busy={isCheckingOut}
-            >
-              {isCheckingOut ? "Apertura checkout..." : "Procedi al pagamento"}
-            </button>
-            {checkoutError && (
-              <p className="text-xs text-red-600" role="alert">
-                {checkoutError}
-              </p>
-            )}
-          </section>
-        </div>
-      </div>
-      <AnimatePresence>
+          </div>
+        )}
         {selectedItem && (
           <ProductDetails
             place={{

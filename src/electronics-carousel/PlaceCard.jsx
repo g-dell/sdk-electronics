@@ -19,16 +19,9 @@ function PlaceCard({ place, onCardClick }) {
     
     // Verifica che place.id esista e sia valido
     if (!place.id) {
-      console.error("[PlaceCard] Cannot add to cart: place.id is missing", place);
       return;
     }
-    
-    console.log("[PlaceCard] Adding product to cart:", {
-      id: place.id,
-      name: place.name,
-      cardId: place.id, // Per verificare che sia il prodotto corretto
-    });
-    
+
     // Aggiungi SOLO questo prodotto specifico
     addToCart({
       id: place.id,

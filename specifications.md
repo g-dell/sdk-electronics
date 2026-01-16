@@ -104,7 +104,7 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
     - **File prodotti**: `py/new_initial_cart_items.ts` contiene array di prodotti elettronici con tipo `CartItem[]`
     - **Widget negozio**: `src/pizzaz-shop/index.tsx` importa prodotti e gestisce UI del negozio
     - **Widget carrello**: `src/shopping-cart/index.tsx` gestisce il carrello acquisti
-    - **Server Python**: `electronics_server_python/main.py` espone 7 tool MCP (6 widget + 1 tool Stripe)
+    - **Server Python**: `electronics_server_python/main.py` espone tool MCP per i widget e per il flusso checkout/Stripe (PaymentIntent + sessioni checkout MCP).
     - **Build system**: `build-all.mts` genera bundle per tutti i widget (pizzaz, pizzaz-shop, pizzaz-carousel, pizzaz-list, pizzaz-albums, etc.)
     - **Package manager**: `package.json` versione 5.0.16, usa pnpm 10.24.0
 
@@ -1095,14 +1095,20 @@ Questa sezione verifica che il client/widget rispetti tutte le linee guida MCP C
     - `electronics-albums`: Widget galleria prodotti
     - `electronics-list`: Widget lista prodotti
     - `electronics-shop`: Widget negozio interattivo completo
+    - `shopping-cart`: Widget carrello (checkout + riepilogo post-acquisto)
     - `product-list`: Tool che recupera prodotti da MotherDuck
-  - `create_checkout_session`: Tool MCP che crea una Stripe Checkout Session
+    - `create_checkout_session`: Tool MCP che crea una Stripe Checkout Session (legacy)
+    - `create_payment_intent`: Tool Stripe (PaymentIntent, solo card)
+    - `confirm_payment_intent`: Tool Stripe (conferma PaymentIntent)
+    - `checkout_create_session`: Crea sessione checkout MCP (totali + PaymentIntent)
+    - `checkout_update_session`: Aggiorna sessione checkout MCP (items/currency/promo)
+    - `checkout_complete_session`: Completa sessione checkout MCP (conferma pagamento)
 - [x]  **Modificare o creare nuovi strumenti per i prodotti elettronici**: Adattare gli strumenti esistenti o crearne di nuovi per interagire con i dati dei prodotti elettronici.
   - **Completato**: [2026-01-08] Tutti gli strumenti sono stati adattati per prodotti elettronici:
     1. ✅ Identificatori aggiornati da `pizza-*` a `electronics-*` (completato in Sezione 6)
     2. ✅ Titoli e descrizioni aggiornati per riflettere prodotti elettronici (completato in Sezione 6 e 7)
     3. ✅ Tool `product-list` implementato per recuperare prodotti da MotherDuck
-  - **Nota**: Il tool `create_checkout_session` richiede la variabile d'ambiente `STRIPE_SECRET_KEY` sul server.
+  - **Nota**: Tutti i tool Stripe/checkout richiedono la variabile d'ambiente `STRIPE_SECRET_KEY` sul server.
   - **Nota**: Se in futuro si volessero tool aggiuntivi (es. ricerca prodotti, filtri avanzati), si possono aggiungere seguendo lo stesso pattern.
     3. Valutare se aggiungere nuovi tool: `search-products` (cerca prodotti per nome/categoria), `product-details` (dettagli prodotto specifico), `filter-products` (filtra per prezzo/categoria)
     4. Aggiornare `TOOL_INPUT_SCHEMA` per rimuovere `pizzaTopping` e aggiungere parametri appropriati per prodotti elettronici
@@ -1197,7 +1203,7 @@ Quando sarà il momento di implementare il prompt, dovranno essere chiariti i se
 
 #### 10.2.2 Server MCP disponibili
 - [ ] **Elettronics server**: Come descrivere il server `electronics-python` e i suoi tool?
-  - Tool disponibili: `electronics-map`, `electronics-carousel`, `electronics-albums`, `electronics-list`, `electronics-shop`, `product-list`, `create_checkout_session`
+  - Tool disponibili: `electronics-map`, `electronics-carousel`, `electronics-albums`, `electronics-list`, `electronics-shop`, `shopping-cart`, `product-list`, `create_checkout_session`, `create_payment_intent`, `confirm_payment_intent`, `checkout_create_session`, `checkout_update_session`, `checkout_complete_session`
   - Quando usare ciascun tool?
   - Qual è il flusso di interazione consigliato?
 
@@ -1436,6 +1442,7 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 | "Mostrami prodotti per categoria" / "Voglio vedere tutti i televisori" | `electronics-albums` | Galleria organizzata per categoria (Video & TV, Informatica, Audio) |
 | "Verifica disponibilità in negozio" / "Dove posso trovare questo prodotto?" | `electronics-map` | Mappa interattiva con posizioni |
 | "Apri il negozio" / "Voglio comprare" / "Aggiungi al carrello" | `electronics-shop` | **Negozi completo con carrello, filtri per categoria e checkout (max 24 prodotti)** |
+| "Mostra il carrello" / "Voglio vedere il carrello" / "Cosa ho nel carrello?" | `shopping-cart` | Carrello condiviso con checkout e riepilogo post-acquisto |
 | "Confronta questi due modelli" / "Quali sono le differenze tecniche?" | `product-list` + tabella comparativa | Recupera dati per confronto dettagliato |
 | "Cerca prodotti con caratteristiche specifiche" / "Trova TV OLED sotto 1000€" | `product-list` | Analisi e filtri sui dati |
 | "Quale prodotto è meglio per gaming?" / Consulenza tecnica | `product-list` + widget appropriato | Analisi dati + visualizzazione |
@@ -1447,7 +1454,7 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 
 ⚠️ **Widget Interattivi**: I tool `electronics-map`, `electronics-carousel`, `electronics-albums`, `electronics-list`, e `electronics-shop` restituiscono widget HTML interattivi che vengono visualizzati direttamente nella chat. Questi widget permettono all'utente di interagire visivamente con i prodotti.
 
-⚠️ **Carrello e Checkout**: Il tool `electronics-shop` include funzionalità complete di carrello con possibilità di aggiungere/rimuovere prodotti, selezionare quantità, filtrare per categoria (Video & TV, Informatica, Audio), e procedere al checkout. Usalo quando l'utente è pronto ad acquistare.
+⚠️ **Carrello e Checkout**: Il tool `electronics-shop` include funzionalità complete di carrello con possibilità di aggiungere/rimuovere prodotti, selezionare quantità, filtrare per categoria (Video & TV, Informatica, Audio), e procedere al checkout. Usalo quando l'utente è pronto ad acquistare. Il widget `shopping-cart` completa il pagamento simulato, **svuota il carrello** e mostra un **riepilogo post-acquisto** con prodotti, totali, dati fattura e data di consegna. Il pulsante "Procedi al pagamento" apre una **modale** per inserire i dati di fatturazione.
 
 ⚠️ **Database in Tempo Reale**: Il tool `product-list` recupera dati in tempo reale dal database MotherDuck (`app_gpt_elettronica`). I dati sono sempre aggiornati e includono tutti i dettagli tecnici necessari per confronti e analisi.
 
@@ -1582,6 +1589,31 @@ Questa sezione documenta le migliorie implementate per migliorare l'esperienza u
   - **Completato**: [2026-01-15] Rimosse utility di debug non più usate e import inutilizzati.
   - **Implementazione**:
     - Eliminati `useEffect`, `useMemo`, `useRef`, `useOpenAiGlobal`, `JsonPanel`, `usePrettyJson`, `createDefaultCartState` e variabili debug non usate.
+  - **File modificati**:
+    - `src/shopping-cart/index.tsx`
+
+### 11.5 Riepilogo post-acquisto e svuotamento carrello
+
+- [x] **Riepilogo acquisto nel carrello**: Dopo un pagamento riuscito, il carrello viene svuotato e viene mostrato un riepilogo completo dell'ordine.
+  - **Completato**: [2026-01-16] Aggiunto riepilogo ordine con prodotti, totali, dati di fatturazione, data di consegna stimata e ringraziamento.
+  - **Implementazione**:
+    1. ✅ **Snapshot ordine** (`src/shopping-cart/index.tsx`):
+       - Salva i prodotti acquistati e calcola i totali (subtotale, IVA, spedizione, totale).
+    2. ✅ **Svuotamento carrello**:
+       - Aggiunta `clearCart()` in `src/use-cart.ts` per azzerare gli item dopo il successo.
+    3. ✅ **Riepilogo UI**:
+       - Sezione "Riepilogo acquisto" con elenco prodotti, totali, dati fattura e data consegna casuale (3-7 giorni).
+  - **File modificati**:
+    - `src/use-cart.ts`
+    - `src/shopping-cart/index.tsx`
+
+### 11.6 Modale checkout per dati fatturazione
+
+- [x] **Modale dati di fatturazione**: Il checkout nel carrello avviene tramite modale dedicata avviata dal pulsante "Procedi al pagamento".
+  - **Completato**: [2026-01-16] Spostati i campi di fatturazione in una modale con conferma pagamento.
+  - **Implementazione**:
+    1. ✅ **Pulsante checkout**: apre la modale per l'inserimento dei dati.
+    2. ✅ **Conferma e paga**: avvia il flusso di pagamento e chiude la modale al successo.
   - **File modificati**:
     - `src/shopping-cart/index.tsx`
 
