@@ -119,7 +119,8 @@ function App() {
       if (
         typeof payload.id === "string" ||
         typeof payload.status === "string" ||
-        typeof payload.cart === "object"
+        typeof payload.cart === "object" ||
+        typeof payload.payment_intent_id === "string"
       ) {
         return payload;
       }
@@ -189,32 +190,60 @@ function App() {
     setIsCheckingOut(true);
     setCheckoutError(null);
     try {
-      const createResponse = await window.openai.callTool(
-        "checkout_create_session",
-        {
-          items: cartItems.map((item) => ({
-            name: item.name,
-            quantity: item.quantity ?? 1,
-            unit_amount_major: item.price,
-            description: item.shortDescription ?? item.description ?? "",
-          })),
-          currency: "eur",
-          buyer_email: customerEmail.trim(),
-          shared_payment_token: "test_spt_visa",
-        }
-      );
-      const sessionId = extractSessionId(createResponse);
-      if (!sessionId) {
-        throw new Error("ID sessione checkout non disponibile.");
+      const createResponse = await window.openai.callTool("checkout_create_session", {
+        items: cartItems.map((item) => ({
+          name: item.name,
+          quantity: item.quantity ?? 1,
+          unit_amount_major: item.price,
+          description: item.shortDescription ?? item.description ?? "",
+        })),
+        currency: "eur",
+        buyer_email: customerEmail.trim(),
+        shared_payment_token: "test_spt_visa",
+      });
+      console.log("[checkout_create_session]", createResponse);
+
+      const createStructured = extractStructuredContent(createResponse);
+      const sessionId =
+        createStructured && typeof createStructured.id === "string"
+          ? createStructured.id
+          : null;
+      const paymentIntentId =
+        createStructured && typeof createStructured.payment_intent_id === "string"
+          ? createStructured.payment_intent_id
+          : null;
+
+      if (!sessionId && !paymentIntentId) {
+        throw new Error(
+          `Risposta create_session non valida: ${JSON.stringify(createResponse)}`
+        );
       }
 
-      const completeResponse = await window.openai.callTool(
-        "checkout_complete_session",
-        {
-          session_id: sessionId,
+      let status: string | null = null;
+
+      if (sessionId) {
+        try {
+          const completeResponse = await window.openai.callTool(
+            "checkout_complete_session",
+            {
+              session_id: sessionId,
+            }
+          );
+          console.log("[checkout_complete_session]", completeResponse);
+          status = extractStatus(completeResponse);
+        } catch (error) {
+          console.error("checkout_complete_session failed", error);
         }
-      );
-      const status = extractStatus(completeResponse);
+      }
+
+      if (!status && paymentIntentId) {
+        const confirmResponse = await window.openai.callTool("confirm_payment_intent", {
+          payment_intent_id: paymentIntentId,
+        });
+        console.log("[confirm_payment_intent]", confirmResponse);
+        status = extractStatus(confirmResponse);
+      }
+
       if (status === "succeeded") {
         setCheckoutStatus("success");
       } else {
