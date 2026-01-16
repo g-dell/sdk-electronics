@@ -423,7 +423,7 @@ function App() {
 
   return (
     <div
-      className="min-h-screen w-full bg-white text-black bg-[radial-gradient(circle_at_top_left,_#fff7ed_0,_#ffffff_55%),radial-gradient(circle_at_bottom_right,_#eef2ff_0,_#ffffff_45%)]"
+      className="min-h-screen w-full bg-white text-black bg-[radial-gradient(circle_at_top_left,_#fff7ed_0,_#ffffff_55%),radial-gradient(circle_at_bottom_right,_#eef2ff_0,_#ffffff_45%)] rounded-2xl shadow-sm"
       style={{
         fontFamily: '"Trebuchet MS", "Gill Sans", "Lucida Grande", sans-serif',
       }}

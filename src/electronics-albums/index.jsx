@@ -38,7 +38,7 @@ function AlbumsCarousel({ onSelect }) {
   }, [emblaApi]);
 
   return (
-    <div className="antialiased relative w-full text-black py-5 select-none">
+    <div className="antialiased relative w-full text-black py-5 select-none rounded-2xl shadow-sm">
       <div className="overflow-hidden max-sm:mx-5" ref={emblaRef}>
         <div className="flex gap-5 items-stretch">
           {albums.map((album) => (

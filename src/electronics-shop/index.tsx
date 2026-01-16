@@ -74,16 +74,18 @@ const getCategoryScore = (item: CartItem, categoryTags: string[]) => {
 };
 
 const getPrimaryCategory = (item: CartItem) => {
-  let best: { category: string; score: number } | null = null;
+  let bestCategory: string | null = null;
+  let bestScore = 0;
 
   Object.entries(CATEGORY_MAPPING).forEach(([category, categoryTags]) => {
     const score = getCategoryScore(item, categoryTags);
-    if (score > 0 && (!best || score > best.score)) {
-      best = { category, score };
+    if (score > bestScore) {
+      bestScore = score;
+      bestCategory = category;
     }
   });
 
-  return best?.category ?? null;
+  return bestScore > 0 ? bestCategory : null;
 };
 
 const getCpuTier = (text: string) => {
@@ -1564,7 +1566,7 @@ function App() {
   return (
     <div
       className={clsx(
-        `flex items-center justify-center overflow-hidden`,
+        `flex items-center justify-center overflow-hidden rounded-2xl shadow-sm`,
         isModalView ? "px-0 pb-4" : ""
       )}
       style={{
