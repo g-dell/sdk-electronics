@@ -246,6 +246,8 @@ function App() {
               place={selectedPlace}
               onClose={() => navigate("..")}
               position="modal"
+              relatedSourceItems={places}
+              onSelectRelated={(item) => navigate(`/place/${item.id}`)}
             />
           )}
         </AnimatePresence>

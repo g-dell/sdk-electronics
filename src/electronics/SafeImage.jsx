@@ -28,18 +28,14 @@ export default function SafeImage({ src, alt, className, fallbackSrc, proxyBaseU
    * Tries multiple strategies to find the server URL with detailed logging.
    */
   const getProxyBaseUrl = () => {
-    console.log("[SafeImage] Resolving proxy base URL...");
-    
     // If explicitly provided, use it
     if (proxyBaseUrl) {
-      console.log("[SafeImage] Using explicit proxyBaseUrl prop:", proxyBaseUrl);
       return proxyBaseUrl;
     }
 
     // Use global config (which has its own logging)
     const baseUrl = config.serverBaseUrl;
     if (baseUrl) {
-      console.log("[SafeImage] Using global config serverBaseUrl:", baseUrl);
       return baseUrl;
     }
 
@@ -47,15 +43,11 @@ export default function SafeImage({ src, alt, className, fallbackSrc, proxyBaseU
     if (typeof window !== "undefined" && window.location) {
       const origin = window.location.origin;
       if (origin && !origin.startsWith("data:") && !origin.startsWith("blob:")) {
-        console.log("[SafeImage] Using window.location.origin as fallback:", origin);
         return origin;
-      } else {
-        console.warn("[SafeImage] window.location.origin is invalid:", origin);
       }
     }
 
     // Last resort: empty string (relative URL)
-    console.warn("[SafeImage] No proxy base URL found, will use relative URL");
     return "";
   };
 
@@ -66,7 +58,6 @@ export default function SafeImage({ src, alt, className, fallbackSrc, proxyBaseU
     const base = getProxyBaseUrl();
     const encodedUrl = encodeURIComponent(imageUrl);
     const proxyUrl = base ? `${base}/proxy-image?url=${encodedUrl}` : `/proxy-image?url=${encodedUrl}`;
-    console.log("[SafeImage] Built proxy URL:", proxyUrl, "for original image:", imageUrl);
     return proxyUrl;
   };
 
@@ -91,16 +82,8 @@ export default function SafeImage({ src, alt, className, fallbackSrc, proxyBaseU
   };
 
   const handleError = (errorEvent) => {
-    console.log("[SafeImage] Image load error for:", imageSrc, {
-      retryCount,
-      hasError,
-      isExternal: isExternalUrl(src),
-      originalSrc: src,
-    });
-
     // If we haven't tried the proxy yet and the URL is external, try proxy
     if (retryCount === 0 && isExternalUrl(src) && !hasError) {
-      console.log("[SafeImage] Attempting proxy retry for external image:", src);
       const proxyUrl = buildProxyUrl(src);
       setRetryCount(1);
       setImageSrc(proxyUrl);
@@ -108,16 +91,10 @@ export default function SafeImage({ src, alt, className, fallbackSrc, proxyBaseU
     }
 
     // If proxy also failed or we've already tried, use fallback
-    if (retryCount > 0) {
-      console.error("[SafeImage] Proxy also failed for image:", src, "Proxy URL was:", imageSrc);
-    }
-
     if (!hasError && fallbackSrc) {
-      console.log("[SafeImage] Using fallback image:", fallbackSrc);
       setHasError(true);
       setImageSrc(fallbackSrc);
     } else if (!hasError) {
-      console.warn("[SafeImage] No fallback available, showing placeholder for:", src);
       // If no fallback provided, use a data URI placeholder
       setHasError(true);
       setImageSrc(
@@ -128,20 +105,10 @@ export default function SafeImage({ src, alt, className, fallbackSrc, proxyBaseU
 
   // Reset error state if src changes
   React.useEffect(() => {
-    console.log("[SafeImage] Image src changed to:", src);
     setHasError(false);
     setRetryCount(0);
     setImageSrc(src);
   }, [src]);
-
-  // Log initial render info
-  React.useEffect(() => {
-    console.log("[SafeImage] Component mounted with src:", src, {
-      proxyBaseUrl,
-      isExternal: isExternalUrl(src),
-      resolvedBaseUrl: getProxyBaseUrl(),
-    });
-  }, []);
 
   return (
     <img

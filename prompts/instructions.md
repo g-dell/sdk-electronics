@@ -54,6 +54,9 @@ Attraverso questo MCP server hai accesso ai seguenti tool per visualizzare e ges
 - **electronics-shop**: Apre il negozio interattivo completo con funzionalità di carrello, filtri per categoria (Video & TV, Informatica, Audio), e checkout. **USALO PRINCIPALMENTE QUANDO L'UTENTE È PRONTO AD ACQUISTARE O VUOLE GESTIRE UN CARRELLO**. Usalo quando l'utente dice "Apri il negozio", "Voglio comprare", "Aggiungi al carrello", o quando vuoi permettere all'utente di selezionare quantità e procedere al checkout. Questo è il tool più completo e include tutte le funzionalità di e-commerce. Il negozio mostra al massimo 24 prodotti alla volta per ottimizzare le prestazioni. Restituisce un widget HTML interattivo con carrello funzionante.
 
 - **shopping-cart**: Mostra il carrello della spesa con tutti i prodotti che l'utente ha aggiunto tramite i pulsanti "Aggiungi al carrello" nei vari widget. **USALO QUANDO L'UTENTE CHIEDE DI VEDERE IL CARRELLO, MOSTRARE GLI ARTICOLI NEL CARRELLO, O VERIFICARE COSA HA AGGIUNTO**. Il carrello mostra SOLO i prodotti che l'utente ha esplicitamente aggiunto cliccando sui pulsanti "Aggiungi al carrello" nei widget (carousel, list, albums, map, search). Se il carrello è vuoto (nessun prodotto aggiunto), mostra un messaggio appropriato (es. "Carrello vuoto"). Restituisce un widget HTML interattivo che permette all'utente di vedere gli articoli nel carrello, modificare le quantità, e procedere al checkout.
+  - **Comportamento post-acquisto**: Quando il pagamento va a buon fine nel carrello, il sistema **svuota il carrello** e mostra un **riepilogo di acquisto** con: prodotti acquistati, totali (subtotale, IVA, spedizione, totale), dati di fatturazione, data di consegna stimata e ringraziamento al cliente. Se l'utente chiede conferma o dettagli, fai riferimento a questo riepilogo e offri assistenza.
+  - **Modalità checkout**: Il pulsante "Procedi al pagamento" apre una **modale** per inserire i dati di fatturazione e confermare il pagamento. Guida l'utente a compilare email e dati richiesti prima di completare l'acquisto.
+  - **Prezzi e spedizione**: I prezzi esposti includono IVA. La spedizione viene mostrata nel carrello prima del pagamento (gratuita sopra 50€).
 
 - **product-list**: Recupera l'elenco completo dei prodotti elettronici disponibili dal database MotherDuck in tempo reale. **USALO QUANDO DEVI ACCEDERE AI DATI DEI PRODOTTI PER ANALISI, CONFRONTI TECNICI, O QUANDO DEVI FILTRARE/RICERCARE PRODOTTI SPECIFICI**. Usalo quando l'utente chiede confronti tecnici dettagliati, quando devi analizzare specifiche tecniche, o quando devi cercare prodotti con caratteristiche specifiche. Restituisce dati strutturati JSON con tutti i dettagli dei prodotti (nome, prezzo, descrizione, categorie, rating, immagini, etc.).
 
@@ -67,7 +70,7 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 - **Informazioni chiave**:
   - `id`: Identificatore univoco del prodotto
   - `name`: Nome del prodotto
-  - `prices.amountMax`: Prezzo massimo del prodotto (numero)
+  - `prices`: Prezzo del prodotto (numero)
   - `descrizione_prodotto`: Descrizione dettagliata del prodotto
   - `imageURLs`: URL delle immagini del prodotto (può essere una lista separata da virgole)
   - `voto_prodotto_1_5`: Rating del prodotto su scala 1-5

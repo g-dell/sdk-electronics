@@ -18,7 +18,6 @@ export function getServerBaseUrl(): string {
   // Check for runtime injection (can be set via meta tag or script tag in HTML)
   if (typeof window !== "undefined" && (window as any).__ELECTRONICS_SERVER_URL__) {
     const injected = (window as any).__ELECTRONICS_SERVER_URL__;
-    console.log("[Config] Using injected server URL:", injected);
     return injected;
   }
 
@@ -31,7 +30,6 @@ export function getServerBaseUrl(): string {
           const url = new URL(script.src);
           // Check if it's from our server (contains /assets/ or electronics in path)
           if (url.pathname.includes("/assets/") || url.pathname.includes("electronics")) {
-            console.log("[Config] Deduced server URL from script:", url.origin);
             return url.origin;
           }
         } catch (e) {
@@ -45,13 +43,11 @@ export function getServerBaseUrl(): string {
   if (typeof window !== "undefined" && window.location) {
     const origin = window.location.origin;
     if (origin && !origin.startsWith("data:") && !origin.startsWith("blob:")) {
-      console.log("[Config] Using window.location.origin:", origin);
       return origin;
     }
   }
 
   // Fallback: empty string (relative URLs)
-  console.log("[Config] No server URL found, using relative URLs");
   return "";
 }
 
@@ -80,7 +76,6 @@ export const config = {
     const base = this.serverBaseUrl;
     const encodedUrl = encodeURIComponent(imageUrl);
     const proxyUrl = `${base}${this.proxyImagePath}?url=${encodedUrl}`;
-    console.log("[Config] Built proxy URL:", proxyUrl, "for image:", imageUrl);
     return proxyUrl;
   },
 };

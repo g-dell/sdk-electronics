@@ -22,7 +22,7 @@ def csv_to_typescript_array(csv_filepath):
             # Mappatura dei campi dal CSV alla struttura CartItem
             item_id = clean_string(row.get('id', ''))
             item_name = clean_string(row.get('name', ''))
-            item_price_str = row.get('prices.amountMax', '0.0')
+            item_price_str = row.get('prices', '0.0')
             try:
                 item_price = float(item_price_str)
             except ValueError:

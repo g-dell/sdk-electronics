@@ -60,6 +60,8 @@ function App() {
             place={selectedPlace}
             onClose={() => setSelectedPlace(null)}
             position="modal"
+            relatedSourceItems={places}
+            onSelectRelated={(item) => setSelectedPlace(item)}
           />
         )}
       </AnimatePresence>

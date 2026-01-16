@@ -60,6 +60,160 @@ const CATEGORY_MAPPING: Record<string, string[]> = {
   ],
 };
 
+const RELATED_ITEMS_LIMIT = 3;
+const RELATED_PRICE_RANGE = 0.3;
+
+const getCategoryScore = (item: CartItem, categoryTags: string[]) => {
+  const tags = item.tags ?? [];
+  return categoryTags.reduce((score, categoryTag) => {
+    const hasMatch = tags.some((tag) =>
+      tag.toLowerCase().includes(categoryTag.toLowerCase())
+    );
+    return score + (hasMatch ? 1 : 0);
+  }, 0);
+};
+
+const getPrimaryCategory = (item: CartItem) => {
+  let best: { category: string; score: number } | null = null;
+
+  Object.entries(CATEGORY_MAPPING).forEach(([category, categoryTags]) => {
+    const score = getCategoryScore(item, categoryTags);
+    if (score > 0 && (!best || score > best.score)) {
+      best = { category, score };
+    }
+  });
+
+  return best?.category ?? null;
+};
+
+const getCpuTier = (text: string) => {
+  const match = text.match(/\b(i[3579]|ryzen\s*[3579])\b/i);
+  if (!match) {
+    return 0;
+  }
+
+  const token = match[1].toLowerCase().replace(/\s+/g, "");
+  if (token.includes("i9") || token.includes("ryzen9")) {
+    return 4;
+  }
+  if (token.includes("i7") || token.includes("ryzen7")) {
+    return 3;
+  }
+  if (token.includes("i5") || token.includes("ryzen5")) {
+    return 2;
+  }
+  if (token.includes("i3") || token.includes("ryzen3")) {
+    return 1;
+  }
+  return 0;
+};
+
+const getRelatedItems = (current: CartItem, items: CartItem[]) => {
+  const category = getPrimaryCategory(current);
+  const currentText = [
+    current.name,
+    current.shortDescription,
+    current.detailSummary,
+    ...(current.tags ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const currentTier = getCpuTier(currentText);
+  const currentPrice = getItemPrice(current);
+  const priceBand = Math.max(currentPrice * RELATED_PRICE_RANGE, 15);
+
+  const candidates = items.filter((item) => item.id !== current.id);
+
+  const scored = candidates.map((item) => {
+    const candidateText = [
+      item.name,
+      item.shortDescription,
+      item.detailSummary,
+      ...(item.tags ?? []),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const categoryTags = category ? CATEGORY_MAPPING[category] ?? [] : [];
+    const categoryScore =
+      categoryTags.length > 0 ? getCategoryScore(item, categoryTags) : 0;
+
+    const currentTokens = new Set(
+      currentText.split(/\s+/).filter(Boolean)
+    );
+    const candidateTokens = new Set(
+      candidateText.split(/\s+/).filter(Boolean)
+    );
+    let overlap = 0;
+    currentTokens.forEach((token) => {
+      if (candidateTokens.has(token)) {
+        overlap += 1;
+      }
+    });
+    const textScore = Math.min(6, overlap) * 0.2;
+
+    const candidateTier = getCpuTier(candidateText);
+
+    const candidatePrice = getItemPrice(item);
+    const priceDelta = Math.abs(candidatePrice - currentPrice);
+    const priceScore =
+      priceDelta <= priceBand ? 1 - priceDelta / priceBand : -0.5;
+
+    const isUpgrade =
+      candidateTier > currentTier && candidatePrice <= currentPrice * 1.2;
+    const isBetterValue = candidatePrice <= currentPrice;
+
+    return {
+      item,
+      isPreferred: isUpgrade || isBetterValue,
+      score:
+        priceScore +
+        textScore +
+        (categoryScore ? Math.min(3, categoryScore) * 0.2 : 0) +
+        (isUpgrade ? 0.6 : 0) +
+        (isBetterValue ? 0.3 : 0),
+    };
+  });
+
+  return scored
+    .filter((entry) => entry.score > 0.1)
+    .sort((a, b) => {
+      if (a.isPreferred !== b.isPreferred) {
+        return a.isPreferred ? -1 : 1;
+      }
+      return b.score - a.score;
+    })
+    .slice(0, RELATED_ITEMS_LIMIT)
+    .map((entry) => entry.item);
+};
+
+const getItemPrice = (item: CartItem) => {
+  const rawPrice = (item as Record<string, unknown>).prices;
+  if (typeof rawPrice === "number" && Number.isFinite(rawPrice)) {
+    return rawPrice;
+  }
+  if (typeof rawPrice === "string") {
+    const parsed = Number(rawPrice);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  if (rawPrice && typeof rawPrice === "object") {
+    const nested = rawPrice as { amountMax?: number; amountMin?: number };
+    const amount = nested.amountMax ?? nested.amountMin;
+    if (typeof amount === "number" && Number.isFinite(amount)) {
+      return amount;
+    }
+  }
+
+  return item.price;
+};
+
+const formatPrice = (value: number) => `€${value.toFixed(2)}`;
+
 // Funzione per estrarre le categorie disponibili dai prodotti
 const getAvailableCategories = (items: CartItem[]): Array<{ id: string; label: string; tags: string[] }> => {
   const categoryCounts: Record<string, number> = {};
@@ -184,6 +338,7 @@ function SelectedCartItemPanel({
     ? item.nutritionFacts
     : [];
   const highlights = Array.isArray(item.highlights) ? item.highlights : [];
+  const displayPrice = getItemPrice(item);
 
   const hasNutritionFacts = nutritionFacts.length > 0;
   const hasHighlights = highlights.length > 0;
@@ -205,7 +360,7 @@ function SelectedCartItemPanel({
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-0">
             <p className="text-xl font-medium text-black">
-              ${item.price.toFixed(2)}
+              {formatPrice(displayPrice)}
             </p>
             <h2 className="text-base text-black">{item.name}</h2>
           </div>
@@ -381,12 +536,12 @@ function CheckoutDetailsPanel({
       <section className="space-y-1 border-t border-black/5 pt-3 text-center">
         <div className="flex items-center justify-between">
           <span className="text-sm text-black/70">Subtotal</span>
-          <span className="text-md text-black">${subtotal.toFixed(2)}</span>
+          <span className="text-md text-black">{formatPrice(subtotal)}</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-sm text-black/70">Total</span>
           <span className="text-md font-medium text-black">
-            ${total.toFixed(2)}
+            {formatPrice(total)}
           </span>
         </div>
         <p className="mt-3 mb-4 border-b border-black/5 text-xs text-black/50"></p>
@@ -676,7 +831,6 @@ function App() {
             ...(anchor ? { anchor } : {}),
           });
         } catch (error) {
-          console.error("Failed to open checkout modal", error);
         }
       })();
     },
@@ -731,7 +885,7 @@ function App() {
   const subtotal = useMemo(
     () =>
       cartItems.reduce(
-        (total, item) => total + item.price * Math.max(0, item.quantity),
+        (total, item) => total + getItemPrice(item) * Math.max(0, item.quantity),
         0
       ),
     [cartItems]
@@ -893,7 +1047,7 @@ function App() {
       return cartItems.map((item) => ({
         id: item.id,
         name: item.name,
-        price: item.price,
+        price: getItemPrice(item),
         quantity: Math.max(0, item.quantity),
         image: item.image,
       }));
@@ -932,7 +1086,7 @@ function App() {
       return cartItems.map((item) => ({
         id: item.id,
         name: item.name,
-        price: item.price,
+        price: getItemPrice(item),
         quantity: Math.max(0, item.quantity),
         image: item.image,
       }));
@@ -984,7 +1138,6 @@ function App() {
             new CustomEvent(CONTINUE_TO_PAYMENT_EVENT, { detail })
           );
         } catch (error) {
-          console.error("Failed to dispatch checkout navigation event", error);
         }
       }
 
@@ -1026,7 +1179,6 @@ function App() {
     try {
       await window?.openai?.requestDisplayMode?.({ mode: "fullscreen" });
     } catch (error) {
-      console.error("Failed to request fullscreen display mode", error);
     }
   }, []);
 
@@ -1056,7 +1208,7 @@ function App() {
     return {
       id: selectedProduct.id,
       name: selectedProduct.name,
-      price: `$${selectedProduct.price.toFixed(2)}`,
+      price: formatPrice(getItemPrice(selectedProduct)),
       description:
         selectedProduct.shortDescription ??
         selectedProduct.detailSummary ??
@@ -1065,6 +1217,13 @@ function App() {
       stock: selectedProduct.stock,
     };
   }, [selectedProduct]);
+
+  const relatedItems = useMemo(() => {
+    if (!selectedProduct) {
+      return [];
+    }
+    return getRelatedItems(selectedProduct, cartItems);
+  }, [selectedProduct, cartItems]);
 
   useEffect(() => {
     if (isCheckoutRoute) {
@@ -1161,6 +1320,7 @@ function App() {
               const isHovered = hoveredCartItemId === item.id;
               const shortDescription =
                 item.shortDescription ?? item.description.split(".")[0];
+              const displayPrice = getItemPrice(item);
               const columnCount = Math.max(gridColumnCount, 1);
               const rowStartIndex =
                 Math.floor(index / columnCount) * columnCount;
@@ -1188,7 +1348,7 @@ function App() {
                   }}
                   role="button"
                   tabIndex={0}
-                  aria-label={`${item.name}, ${item.price.toFixed(2)}, ${item.quantity} in cart. Click to view details`}
+                  aria-label={`${item.name}, ${formatPrice(displayPrice)}, ${item.quantity} in cart. Click to view details`}
                   onClick={(event) =>
                     handleCartItemSelect(
                       item.id,
@@ -1234,7 +1394,7 @@ function App() {
                         {item.name}
                       </p>
                       <p className="text-sm text-black/60">
-                        ${item.price.toFixed(2)}
+                        {formatPrice(displayPrice)}
                       </p>
                     </div>
                     {shortDescription ? (
@@ -1336,12 +1496,12 @@ function App() {
                       {item.name}
                     </p>
                     <p className="text-xs text-black/50">
-                      ${item.price.toFixed(2)} • Qty{" "}
+                      {formatPrice(item.price)} • Qty{" "}
                       {Math.max(0, item.quantity)}
                     </p>
                   </div>
                   <span className="text-sm font-medium text-black">
-                    ${(item.price * Math.max(0, item.quantity)).toFixed(2)}
+                    {formatPrice(item.price * Math.max(0, item.quantity))}
                   </span>
                 </div>
               </div>
@@ -1356,11 +1516,11 @@ function App() {
         <div className="space-y-0.5">
           <div className="flex items-center justify-between text-sm font-medium text-black">
             <span>Subtotal</span>
-            <span>${cartSummarySubtotal.toFixed(2)}</span>
+            <span>{formatPrice(cartSummarySubtotal)}</span>
           </div>
           <div className="flex items-center justify-between text-sm text-black/60">
             <span>Total</span>
-            <span>${cartSummaryTotal.toFixed(2)}</span>
+            <span>{formatPrice(cartSummaryTotal)}</span>
           </div>
         </div>
         <button
@@ -1454,6 +1614,8 @@ function App() {
             place={selectedProductDetails}
             onClose={() => setSelectedProduct(null)}
             position="modal"
+            relatedItems={relatedItems}
+            onSelectRelated={(item) => setSelectedProduct(item)}
           />
         )}
       </AnimatePresence>

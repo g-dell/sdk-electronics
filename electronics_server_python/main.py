@@ -15,12 +15,15 @@ MCP Protocol Version: 2024-11-05
 __version__ = "1.0.0"
 
 import os
+import json
+import uuid
 import logging
 import duckdb
 import re
 from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
+from decimal import Decimal, ROUND_HALF_UP
 
 # Carica il file .env dalla root del progetto (non dalla directory electronics_server_python)
 # __file__ è main.py in electronics_server_python/, quindi parent.parent è la root
@@ -81,7 +84,67 @@ from starlette.responses import HTMLResponse as StarletteHTMLResponse, Response
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import httpx
+import stripe
 from urllib.parse import urlparse, urlencode
+
+
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+
+# Demo map: SPT -> Stripe PaymentMethod id
+DEMO_SPT_TO_PM = {
+    "test_spt_visa": "pm_card_visa",
+    "test_spt_3ds2": "pm_card_authenticationRequired",
+}
+
+
+def resolve_payment_method_from_spt(shared_payment_token: str | None) -> str | None:
+    if not shared_payment_token:
+        return None
+    return DEMO_SPT_TO_PM.get(shared_payment_token)
+
+
+def create_payment_intent(
+    amount_minor: int,
+    currency: str,
+    buyer_email: str,
+    shared_payment_token: str | None,
+    metadata: dict | None = None,
+):
+    """
+    Crea un PaymentIntent limitato a 'card' per evitare metodi redirect (niente return_url richiesto).
+    Se è presente uno SPT demo, lo mappa a un PaymentMethod test di Stripe.
+    """
+    pm = resolve_payment_method_from_spt(shared_payment_token)
+
+    kwargs = dict(
+        amount=amount_minor,
+        currency=currency,
+        receipt_email=buyer_email,
+        capture_method="automatic",
+        metadata=metadata or {},
+        confirm=False,
+        # Evita metodi redirect: mantieni soltanto carte
+        payment_method_types=["card"],
+    )
+    if pm:
+        kwargs["payment_method"] = pm
+
+    pi = stripe.PaymentIntent.create(**kwargs)
+    return pi
+
+
+def confirm_payment_intent(payment_intent_id: str):
+    """
+    Conferma il PI. Se manca un payment_method (nessuno SPT passato in create),
+    usa come fallback la carta test 'pm_card_visa' per la demo.
+    """
+    pi_obj = stripe.PaymentIntent.retrieve(payment_intent_id)
+    if not pi_obj.get("payment_method"):
+        # Fallback demo per flusso 'happy path'
+        pi = stripe.PaymentIntent.confirm(payment_intent_id, payment_method="pm_card_visa")
+    else:
+        pi = stripe.PaymentIntent.confirm(payment_intent_id)
+    return pi
 
 
 @dataclass(frozen=True)
@@ -212,22 +275,22 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
     products_without_categories = 0
     
     for product in products:
-        # Estrai tutte le categorie/tag del prodotto (da categories o primaryCategories)
+        # Estrai tutte le categorie/tag del prodotto (da primaryCategories o categories)
         product_categories_raw = []
         
-        # Prova categories (campo principale nel database)
-        if product.get("categories"):
-            if isinstance(product["categories"], list):
-                product_categories_raw.extend([str(cat).strip() for cat in product["categories"]])
-            elif isinstance(product["categories"], str):
-                product_categories_raw.extend([cat.strip() for cat in product["categories"].split(",")])
-        
-        # Prova primaryCategories (fallback)
+        # Prova primaryCategories (campo principale)
         if product.get("primaryCategories"):
             if isinstance(product["primaryCategories"], list):
                 product_categories_raw.extend([str(cat).strip() for cat in product["primaryCategories"]])
             elif isinstance(product["primaryCategories"], str):
                 product_categories_raw.extend([cat.strip() for cat in product["primaryCategories"].split(",")])
+        
+        # Prova categories (fallback)
+        if product.get("categories"):
+            if isinstance(product["categories"], list):
+                product_categories_raw.extend([str(cat).strip() for cat in product["categories"]])
+            elif isinstance(product["categories"], str):
+                product_categories_raw.extend([cat.strip() for cat in product["categories"].split(",")])
         
         # Normalizza le categorie del prodotto (lowercase)
         product_categories = [cat.lower().strip() for cat in product_categories_raw if cat]
@@ -400,10 +463,17 @@ def rank_products_by_criteria(
     def get_price(product: Dict[str, Any]) -> float:
         """Estrae il prezzo dal prodotto."""
         price_num = 0
-        if "prices.amountMax" in product:
-            price_num = product.get("prices.amountMax", 0)
-        elif isinstance(product.get("prices"), dict):
-            price_num = product.get("prices", {}).get("amountMax", 0)
+        if "prices" in product:
+            prices_value = product.get("prices")
+            if isinstance(prices_value, (int, float)):
+                price_num = prices_value
+            elif isinstance(prices_value, str):
+                try:
+                    price_num = float(prices_value)
+                except ValueError:
+                    price_num = 0
+            elif isinstance(prices_value, dict):
+                price_num = prices_value.get("amountMax", 0) or prices_value.get("amountMin", 0)
         return float(price_num) if price_num else 0.0
     
     def calculate_relevance_score(product: Dict[str, Any]) -> tuple:
@@ -555,7 +625,7 @@ def transform_products_to_places(
     - id, name, coords (lat, lon), description, city, rating, price (stringa), thumbnail, stock
     
     I prodotti dal database prodotti_xeel_shop hanno:
-    - id, name, prices.amountMax/prices.amountMin, descrizione_prodotto, imageURLs, 
+    - id, name, prices, descrizione_prodotto, imageURLs, 
       voto_prodotto_1_5, categories, primaryCategories, stock
     
     Questa funzione mappa i campi dal database e genera valori default per campi mancanti 
@@ -567,7 +637,7 @@ def transform_products_to_places(
     Mapping colonne DB -> places:
     - id -> id
     - name -> name  
-    - prices.amountMax -> price (convertito in $/$$/$$$)
+    - prices -> price (convertito in $/$$/$$$)
     - descrizione_prodotto -> description
     - imageURLs -> thumbnail
     - voto_prodotto_1_5 -> rating (con fallback a 4.5)
@@ -648,24 +718,25 @@ def transform_products_to_places(
                 f"Using unique ID: '{product_id}' for product '{product.get('name', 'Unknown')}'"
             )
         
-        # Ottieni il prezzo da prices.amountMax (colonna nel DB con dot notation)
-        # DuckDB restituisce le colonne con dot come chiavi con dot o come dict annidato
+        # Ottieni il prezzo dalla colonna prices
+        # Può essere numero, stringa numerica o dict (amountMax/amountMin)
         price_num = 0
-        if "prices.amountMax" in product:
-            price_num = product.get("prices.amountMax", 0)
-        elif isinstance(product.get("prices"), dict):
-            price_num = product.get("prices", {}).get("amountMax", 0)
-        
-        # Converti prezzo in formato stringa ($, $$, $$$)
+        if "prices" in product:
+            prices_value = product.get("prices")
+            if isinstance(prices_value, (int, float)):
+                price_num = prices_value
+            elif isinstance(prices_value, str):
+                try:
+                    price_num = float(prices_value)
+                except ValueError:
+                    price_num = 0
+            elif isinstance(prices_value, dict):
+                price_num = prices_value.get("amountMax", 0) or prices_value.get("amountMin", 0)
+        # Converti prezzo in formato stringa in euro (es. 34,59€)
         if isinstance(price_num, (int, float)) and price_num > 0:
-            if price_num < 50:
-                price_str = "$"
-            elif price_num < 100:
-                price_str = "$$"
-            else:
-                price_str = "$$$"
+            price_str = f"{price_num:.2f}".replace(".", ",") + "€"
         else:
-            price_str = "$$"  # Default
+            price_str = ""
         
         # Genera coordinate usando pattern circolare sulle coordinate default
         coords = default_coords[idx % len(default_coords)]
@@ -1272,6 +1343,346 @@ CATEGORY_FILTER_INPUT_SCHEMA: Dict[str, Any] = {
     "additionalProperties": False,
 }
 
+CHECKOUT_SESSION_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "items": {
+            "type": "array",
+            "description": "Articoli del carrello da includere nella Checkout Session.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "quantity": {"type": "integer", "minimum": 1},
+                    "unit_amount_major": {
+                        "type": "number",
+                        "description": "Prezzo unitario in major unit (es. 10.50 per EUR).",
+                    },
+                    "description": {"type": "string"},
+                },
+                "required": ["name", "quantity", "unit_amount_major"],
+                "additionalProperties": False,
+            },
+        },
+        "currency": {
+            "type": "string",
+            "description": "Codice valuta ISO (es. 'eur').",
+        },
+        "success_url": {
+            "type": "string",
+            "description": "URL di ritorno dopo pagamento riuscito.",
+        },
+        "cancel_url": {
+            "type": "string",
+            "description": "URL di ritorno dopo annullamento.",
+        },
+        "customer_email": {
+            "type": "string",
+            "description": "Email cliente (opzionale).",
+        },
+        "billing_details": {
+            "type": "object",
+            "description": "Dati di fatturazione (opzionali).",
+            "properties": {
+                "name": {"type": "string"},
+                "address_line1": {"type": "string"},
+                "address_line2": {"type": "string"},
+                "city": {"type": "string"},
+                "postal_code": {"type": "string"},
+                "country": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "metadata": {
+            "type": "object",
+            "description": "Metadata opzionale per la sessione.",
+            "additionalProperties": {"type": "string"},
+        },
+    },
+    "required": ["items", "currency", "success_url", "cancel_url"],
+    "additionalProperties": False,
+}
+
+
+CHECKOUT_CREATE_SESSION_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "items": {
+            "type": "array",
+            "description": "Articoli del carrello con prezzo in major unit.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "quantity": {"type": "integer", "minimum": 1},
+                    "unit_amount_major": {
+                        "type": "number",
+                        "description": "Prezzo unitario in major unit (es. 10.50 per EUR).",
+                    },
+                    "description": {"type": "string"},
+                },
+                "required": ["name", "quantity", "unit_amount_major"],
+                "additionalProperties": False,
+            },
+        },
+        "currency": {"type": "string"},
+        "buyer_email": {"type": "string"},
+        "shared_payment_token": {"type": "string"},
+        "promo_code": {"type": "string"},
+        "idempotency_key": {"type": "string"},
+    },
+    "required": ["items", "currency", "buyer_email"],
+    "additionalProperties": False,
+}
+
+CHECKOUT_UPDATE_SESSION_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "session_id": {"type": "string"},
+        "items": CHECKOUT_CREATE_SESSION_INPUT_SCHEMA["properties"]["items"],
+        "currency": {"type": "string"},
+        "promo_code": {"type": "string"},
+    },
+    "required": ["session_id"],
+    "additionalProperties": False,
+}
+
+CHECKOUT_COMPLETE_SESSION_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "session_id": {"type": "string"},
+        "idempotency_key": {"type": "string"},
+    },
+    "required": ["session_id"],
+    "additionalProperties": False,
+}
+
+
+CREATE_PAYMENT_INTENT_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "amount_minor": {"type": "integer", "minimum": 1},
+        "currency": {"type": "string"},
+        "buyer_email": {"type": "string"},
+        "shared_payment_token": {"type": "string"},
+        "metadata": {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+        },
+    },
+    "required": ["amount_minor", "currency", "buyer_email"],
+    "additionalProperties": False,
+}
+
+CONFIRM_PAYMENT_INTENT_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "payment_intent_id": {"type": "string"},
+    },
+    "required": ["payment_intent_id"],
+    "additionalProperties": False,
+}
+
+
+class CheckoutItemInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1)
+    quantity: int = Field(gt=0)
+    unit_amount_major: float = Field(gt=0)
+    description: str | None = None
+
+
+class CheckoutSessionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: List[CheckoutItemInput]
+    currency: str = Field(min_length=3)
+    success_url: str = Field(min_length=1)
+    cancel_url: str = Field(min_length=1)
+    customer_email: str | None = None
+    billing_details: Dict[str, str] | None = None
+    metadata: Dict[str, str] | None = None
+
+
+class CheckoutCartItemInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1)
+    quantity: int = Field(gt=0)
+    unit_amount_major: float = Field(gt=0)
+    description: str | None = None
+
+
+class CheckoutCreateSessionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: List[CheckoutCartItemInput]
+    currency: str = Field(min_length=3)
+    buyer_email: str = Field(min_length=1)
+    shared_payment_token: str | None = None
+    promo_code: str | None = None
+    idempotency_key: str | None = None
+
+
+class CheckoutUpdateSessionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    session_id: str = Field(min_length=1)
+    items: List[CheckoutCartItemInput] | None = None
+    currency: str | None = None
+    promo_code: str | None = None
+
+
+class CheckoutCompleteSessionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    session_id: str = Field(min_length=1)
+    idempotency_key: str | None = None
+
+
+class CheckoutCartTotals(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subtotal_minor: int
+    discount_minor: int
+    tax_minor: int
+    shipping_minor: int
+    grand_total_minor: int
+    currency: str
+
+
+class CheckoutCart(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: List[CheckoutCartItemInput]
+    totals: CheckoutCartTotals
+
+
+class CheckoutSession(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    status: str
+    cart: CheckoutCart
+    payment_intent_id: str | None
+
+
+class CheckoutCompleteResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    status: str
+    cart: CheckoutCart
+    payment_intent_id: str | None
+
+
+class CreatePaymentIntentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    amount_minor: int = Field(gt=0)
+    currency: str = Field(min_length=3)
+    buyer_email: str = Field(min_length=1)
+    shared_payment_token: str | None = None
+    metadata: Dict[str, str] | None = None
+
+
+class ConfirmPaymentIntentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    payment_intent_id: str = Field(min_length=1)
+
+
+ZERO_DECIMAL_CURRENCIES = {
+    "bif",
+    "clp",
+    "djf",
+    "gnf",
+    "jpy",
+    "kmf",
+    "krw",
+    "mga",
+    "pyg",
+    "rwf",
+    "ugx",
+    "vnd",
+    "vuv",
+    "xaf",
+    "xof",
+    "xpf",
+}
+
+THREE_DECIMAL_CURRENCIES = {
+    "bhd",
+    "jod",
+    "kwd",
+    "omr",
+    "tnd",
+}
+
+
+def _currency_exponent(currency: str) -> int:
+    currency_lower = currency.lower()
+    if currency_lower in ZERO_DECIMAL_CURRENCIES:
+        return 0
+    if currency_lower in THREE_DECIMAL_CURRENCIES:
+        return 3
+    return 2
+
+
+def _to_minor_amount(amount_major: float, currency: str) -> int:
+    exponent = _currency_exponent(currency)
+    quantize_exp = Decimal(1) / (Decimal(10) ** exponent)
+    decimal_amount = Decimal(str(amount_major)).quantize(quantize_exp, rounding=ROUND_HALF_UP)
+    return int(decimal_amount * (10 ** exponent))
+
+
+CHECKOUT_SESSIONS: Dict[str, Dict[str, Any]] = {}
+IDEMPOTENCY_CACHE: Dict[tuple[str, str], str] = {}
+
+
+def _get_idempotent_response(key: str | None, operation: str) -> str | None:
+    if not key:
+        return None
+    return IDEMPOTENCY_CACHE.get((key, operation))
+
+
+def _save_idempotent_response(key: str, operation: str, payload_json: str) -> None:
+    IDEMPOTENCY_CACHE[(key, operation)] = payload_json
+
+
+def _compute_checkout_totals(
+    items: List[CheckoutCartItemInput],
+    currency: str,
+    promo_code: str | None,
+) -> CheckoutCartTotals:
+    subtotal = 0
+    for item in items:
+        unit_amount = _to_minor_amount(item.unit_amount_major, currency)
+        if unit_amount <= 0:
+            raise ValueError(f"Invalid unit_amount for item '{item.name}'.")
+        subtotal += unit_amount * item.quantity
+
+    discount = 0
+    if promo_code and promo_code.upper() == "WELCOME10":
+        discount = int(subtotal * 0.10)
+
+    taxable_base = max(0, subtotal - discount)
+    tax = 0
+    shipping = 500 if currency.upper() == "EUR" and (subtotal / 100.0) < 50.0 else 0
+    grand = max(0, taxable_base + shipping)
+
+    return CheckoutCartTotals(
+        subtotal_minor=subtotal,
+        discount_minor=discount,
+        tax_minor=tax,
+        shipping_minor=shipping,
+        grand_total_minor=grand,
+        currency=currency.upper(),
+    )
+
+
+def _serialize_checkout_session(
+    session_id: str,
+    status: str,
+    cart: CheckoutCart,
+    payment_intent_id: str | None,
+) -> CheckoutSession:
+    return CheckoutSession(
+        id=session_id,
+        status=status,
+        cart=cart,
+        payment_intent_id=payment_intent_id,
+    )
+
 
 
 def _resource_description(widget: ElectronicsWidget) -> str:
@@ -1402,6 +1813,108 @@ async def _list_tools() -> List[types.Tool]:
                 "destructiveHint": False,
                 "openWorldHint": False,
                 "readOnlyHint": True,
+            },
+        )
+    )
+    
+    tools.append(
+        types.Tool(
+            name="create_checkout_session",
+            title="Create Checkout Session",
+            description=(
+                "Crea una Stripe Checkout Session per completare il pagamento del carrello. "
+                "Usa questo tool quando l'utente decide di acquistare e vuoi generare il link "
+                "di checkout. Richiede gli articoli del carrello con prezzi in major unit, "
+                "la valuta, e gli URL di ritorno (success/cancel). Restituisce l'URL di checkout."
+            ),
+            inputSchema=deepcopy(CHECKOUT_SESSION_INPUT_SCHEMA),
+            annotations={
+                "destructiveHint": False,
+                "openWorldHint": True,
+                "readOnlyHint": False,
+            },
+        )
+    )
+
+    tools.append(
+        types.Tool(
+            name="checkout_create_session",
+            title="Checkout Create Session",
+            description=(
+                "Crea una sessione di checkout in stile ACP e genera un PaymentIntent Stripe. "
+                "Accetta prezzi in major unit e restituisce id sessione, totali e payment_intent_id."
+            ),
+            inputSchema=deepcopy(CHECKOUT_CREATE_SESSION_INPUT_SCHEMA),
+            annotations={
+                "destructiveHint": False,
+                "openWorldHint": True,
+                "readOnlyHint": False,
+            },
+        )
+    )
+
+    tools.append(
+        types.Tool(
+            name="checkout_update_session",
+            title="Checkout Update Session",
+            description=(
+                "Aggiorna una sessione di checkout (items/currency/promo) e ricalcola i totali."
+            ),
+            inputSchema=deepcopy(CHECKOUT_UPDATE_SESSION_INPUT_SCHEMA),
+            annotations={
+                "destructiveHint": False,
+                "openWorldHint": True,
+                "readOnlyHint": False,
+            },
+        )
+    )
+
+    tools.append(
+        types.Tool(
+            name="checkout_complete_session",
+            title="Checkout Complete Session",
+            description=(
+                "Completa una sessione di checkout confermando il PaymentIntent associato."
+            ),
+            inputSchema=deepcopy(CHECKOUT_COMPLETE_SESSION_INPUT_SCHEMA),
+            annotations={
+                "destructiveHint": False,
+                "openWorldHint": True,
+                "readOnlyHint": False,
+            },
+        )
+    )
+
+    tools.append(
+        types.Tool(
+            name="create_payment_intent",
+            title="Create Payment Intent",
+            description=(
+                "Crea un PaymentIntent Stripe (solo carte) e supporta SPT demo "
+                "mappati a PaymentMethod test. Restituisce id, client_secret e status."
+            ),
+            inputSchema=deepcopy(CREATE_PAYMENT_INTENT_INPUT_SCHEMA),
+            annotations={
+                "destructiveHint": False,
+                "openWorldHint": True,
+                "readOnlyHint": False,
+            },
+        )
+    )
+
+    tools.append(
+        types.Tool(
+            name="confirm_payment_intent",
+            title="Confirm Payment Intent",
+            description=(
+                "Conferma un PaymentIntent. Se non ha payment_method, "
+                "usa la card test 'pm_card_visa' come fallback."
+            ),
+            inputSchema=deepcopy(CONFIRM_PAYMENT_INTENT_INPUT_SCHEMA),
+            annotations={
+                "destructiveHint": False,
+                "openWorldHint": True,
+                "readOnlyHint": False,
             },
         )
     )
@@ -1616,6 +2129,638 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=True,
                 )
             )
+    
+    if tool_name == "create_checkout_session":
+        try:
+            checkout_input = CheckoutSessionInput.model_validate(arguments or {})
+        except ValidationError as e:
+            error_msg = f"Invalid input for {tool_name}: {str(e)}"
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+        
+        stripe_secret_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+        if not stripe_secret_key:
+            error_msg = "STRIPE_SECRET_KEY non configurata. Imposta la variabile d'ambiente per creare la Checkout Session."
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+        
+        stripe.api_key = stripe_secret_key
+        currency = checkout_input.currency.lower()
+        
+        line_items = []
+        for item in checkout_input.items:
+            unit_amount = _to_minor_amount(item.unit_amount_major, currency)
+            if unit_amount <= 0:
+                error_msg = f"Invalid unit_amount for item '{item.name}'."
+                logger.warning(error_msg)
+                return types.ServerResult(
+                    types.CallToolResult(
+                        content=[
+                            types.TextContent(
+                                type="text",
+                                text=error_msg,
+                            )
+                        ],
+                        isError=True,
+                    )
+                )
+            product_data = {"name": item.name}
+            if item.description:
+                product_data["description"] = item.description
+            line_items.append(
+                {
+                    "price_data": {
+                        "currency": currency,
+                        "product_data": product_data,
+                        "unit_amount": unit_amount,
+                    },
+                    "quantity": item.quantity,
+                }
+            )
+        
+        metadata = dict(checkout_input.metadata or {})
+        if checkout_input.billing_details:
+            for key, value in checkout_input.billing_details.items():
+                if value:
+                    metadata[f"billing_{key}"] = value
+        
+        customer_email = checkout_input.customer_email.strip() if checkout_input.customer_email else None
+        
+        try:
+            session = stripe.checkout.Session.create(
+                mode="payment",
+                line_items=line_items,
+                success_url=checkout_input.success_url,
+                cancel_url=checkout_input.cancel_url,
+                customer_email=customer_email,
+                billing_address_collection="required",
+                metadata=metadata,
+            )
+        except Exception as e:
+            error_msg = f"Error creating checkout session: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+        
+        result = types.ServerResult(
+            types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text="Checkout session creata con successo.",
+                    )
+                ],
+                structuredContent={
+                    "id": session.id,
+                    "url": session.url,
+                    "currency": session.currency,
+                    "amount_total": session.amount_total,
+                },
+            )
+        )
+        
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(
+            f"Tool execution completed: tool={tool_name}, success=True, duration={duration:.3f}s"
+        )
+        
+        return result
+
+    if tool_name == "checkout_create_session":
+        try:
+            checkout_input = CheckoutCreateSessionInput.model_validate(arguments or {})
+        except ValidationError as e:
+            error_msg = f"Invalid input for {tool_name}: {str(e)}"
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        cached = _get_idempotent_response(checkout_input.idempotency_key, "create")
+        if cached:
+            cached_session = CheckoutSession.model_validate_json(cached)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text="Idempotent response (cached).",
+                        )
+                    ],
+                    structuredContent=cached_session.model_dump(),
+                )
+            )
+
+        stripe_secret_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+        if not stripe_secret_key:
+            error_msg = "STRIPE_SECRET_KEY non configurata. Imposta la variabile d'ambiente per creare il PaymentIntent."
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        stripe.api_key = stripe_secret_key
+        currency = checkout_input.currency.lower()
+
+        try:
+            totals = _compute_checkout_totals(
+                checkout_input.items,
+                currency,
+                checkout_input.promo_code,
+            )
+        except Exception as e:
+            error_msg = f"Error computing totals: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        cart = CheckoutCart(items=checkout_input.items, totals=totals)
+
+        try:
+            pi = create_payment_intent(
+                amount_minor=totals.grand_total_minor,
+                currency=currency,
+                buyer_email=checkout_input.buyer_email,
+                shared_payment_token=checkout_input.shared_payment_token,
+                metadata={
+                    "purpose": "acp_demo",
+                    "items": json.dumps([item.model_dump() for item in checkout_input.items]),
+                },
+            )
+        except Exception as e:
+            error_msg = f"Error creating payment intent: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        session_id = str(uuid.uuid4())
+        CHECKOUT_SESSIONS[session_id] = {
+            "status": "requires_confirmation",
+            "payment_intent_id": pi["id"],
+            "buyer_email": checkout_input.buyer_email,
+            "currency": checkout_input.currency,
+            "items": [item.model_dump() for item in checkout_input.items],
+            "promo_code": checkout_input.promo_code,
+            "totals_json": cart.totals.model_dump_json(),
+        }
+
+        session_obj = _serialize_checkout_session(
+            session_id,
+            "requires_confirmation",
+            cart,
+            pi["id"],
+        )
+
+        if checkout_input.idempotency_key:
+            _save_idempotent_response(
+                checkout_input.idempotency_key,
+                "create",
+                session_obj.model_dump_json(),
+            )
+
+        result = types.ServerResult(
+            types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text=session_obj.model_dump_json(),
+                    )
+                ],
+                structuredContent=session_obj.model_dump(),
+            )
+        )
+
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(
+            f"Tool execution completed: tool={tool_name}, success=True, duration={duration:.3f}s"
+        )
+
+        return result
+
+    if tool_name == "checkout_update_session":
+        try:
+            update_input = CheckoutUpdateSessionInput.model_validate(arguments or {})
+        except ValidationError as e:
+            error_msg = f"Invalid input for {tool_name}: {str(e)}"
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        session = CHECKOUT_SESSIONS.get(update_input.session_id)
+        if not session:
+            error_msg = "Session not found"
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        items = (
+            update_input.items
+            if update_input.items is not None
+            else [CheckoutCartItemInput(**item) for item in session["items"]]
+        )
+        currency = update_input.currency or session["currency"]
+        promo_code = (
+            update_input.promo_code
+            if update_input.promo_code is not None
+            else session["promo_code"]
+        )
+
+        try:
+            totals = _compute_checkout_totals(items, currency, promo_code)
+        except Exception as e:
+            error_msg = f"Error computing totals: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        cart = CheckoutCart(items=items, totals=totals)
+        session.update(
+            {
+                "currency": currency,
+                "items": [item.model_dump() for item in items],
+                "promo_code": promo_code,
+                "totals_json": cart.totals.model_dump_json(),
+            }
+        )
+
+        session_obj = _serialize_checkout_session(
+            update_input.session_id,
+            "requires_confirmation",
+            cart,
+            session.get("payment_intent_id"),
+        )
+
+        result = types.ServerResult(
+            types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text=session_obj.model_dump_json(),
+                    )
+                ],
+                structuredContent=session_obj.model_dump(),
+            )
+        )
+
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(
+            f"Tool execution completed: tool={tool_name}, success=True, duration={duration:.3f}s"
+        )
+
+        return result
+
+    if tool_name == "checkout_complete_session":
+        try:
+            complete_input = CheckoutCompleteSessionInput.model_validate(arguments or {})
+        except ValidationError as e:
+            error_msg = f"Invalid input for {tool_name}: {str(e)}"
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        cached = _get_idempotent_response(complete_input.idempotency_key, "complete")
+        if cached:
+            cached_response = CheckoutCompleteResponse.model_validate_json(cached)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text="Idempotent response (cached).",
+                        )
+                    ],
+                    structuredContent=cached_response.model_dump(),
+                )
+            )
+
+        session = CHECKOUT_SESSIONS.get(complete_input.session_id)
+        if not session:
+            error_msg = "Session not found"
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        items = [CheckoutCartItemInput(**item) for item in session["items"]]
+        totals = CheckoutCartTotals.model_validate_json(session["totals_json"])
+        cart = CheckoutCart(items=items, totals=totals)
+
+        try:
+            payment_result = confirm_payment_intent(session["payment_intent_id"])
+        except Exception as e:
+            error_msg = f"Error confirming payment intent: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        new_status = "succeeded" if payment_result.get("status") == "succeeded" else "failed"
+        session["status"] = new_status
+
+        response_obj = CheckoutCompleteResponse(
+            id=complete_input.session_id,
+            status=new_status,
+            cart=cart,
+            payment_intent_id=session.get("payment_intent_id"),
+        )
+
+        if complete_input.idempotency_key:
+            _save_idempotent_response(
+                complete_input.idempotency_key,
+                "complete",
+                response_obj.model_dump_json(),
+            )
+
+        result = types.ServerResult(
+            types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text=response_obj.model_dump_json(),
+                    )
+                ],
+                structuredContent=response_obj.model_dump(),
+            )
+        )
+
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(
+            f"Tool execution completed: tool={tool_name}, success=True, duration={duration:.3f}s"
+        )
+
+        return result
+
+    if tool_name == "create_payment_intent":
+        try:
+            pi_input = CreatePaymentIntentInput.model_validate(arguments or {})
+        except ValidationError as e:
+            error_msg = f"Invalid input for {tool_name}: {str(e)}"
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        stripe_secret_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+        if not stripe_secret_key:
+            error_msg = "STRIPE_SECRET_KEY non configurata. Imposta la variabile d'ambiente per creare il PaymentIntent."
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        stripe.api_key = stripe_secret_key
+
+        try:
+            pi = create_payment_intent(
+                amount_minor=pi_input.amount_minor,
+                currency=pi_input.currency.lower(),
+                buyer_email=pi_input.buyer_email,
+                shared_payment_token=pi_input.shared_payment_token,
+                metadata=pi_input.metadata,
+            )
+        except Exception as e:
+            error_msg = f"Error creating payment intent: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        result = types.ServerResult(
+            types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text="PaymentIntent creato con successo.",
+                    )
+                ],
+                structuredContent={
+                    "id": pi.id,
+                    "client_secret": pi.client_secret,
+                    "status": pi.status,
+                },
+            )
+        )
+
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(
+            f"Tool execution completed: tool={tool_name}, success=True, duration={duration:.3f}s"
+        )
+
+        return result
+
+    if tool_name == "confirm_payment_intent":
+        try:
+            confirm_input = ConfirmPaymentIntentInput.model_validate(arguments or {})
+        except ValidationError as e:
+            error_msg = f"Invalid input for {tool_name}: {str(e)}"
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        stripe_secret_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+        if not stripe_secret_key:
+            error_msg = "STRIPE_SECRET_KEY non configurata. Imposta la variabile d'ambiente per confermare il PaymentIntent."
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        stripe.api_key = stripe_secret_key
+
+        try:
+            pi = confirm_payment_intent(confirm_input.payment_intent_id)
+        except Exception as e:
+            error_msg = f"Error confirming payment intent: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        result = types.ServerResult(
+            types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text="PaymentIntent confermato con successo.",
+                    )
+                ],
+                structuredContent={
+                    "id": pi.id,
+                    "status": pi.status,
+                },
+            )
+        )
+
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(
+            f"Tool execution completed: tool={tool_name}, success=True, duration={duration:.3f}s"
+        )
+
+        return result
     
     widget = WIDGETS_BY_ID.get(tool_name)
     if widget is None:

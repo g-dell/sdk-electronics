@@ -98,13 +98,13 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
 
 ## 1. Preparazione dell'ambiente
 
-- [x]  **Comprendere la struttura del progetto**: Familiarizza con i file principali, in particolare `py/new_initial_cart_items.ts` (i tuoi prodotti), `src/pizzaz-shop/index.tsx` (il widget del negozio che usa i prodotti, da rinominare in `src/electronics-shop/index.tsx` dopo refactoring Sezione 6), `src/shopping-cart/index.tsx` (il widget del carrello), `pizzaz_server_python/main.py` (il backend Python, da rinominare in `electronics_server_python/main.py` dopo refactoring Sezione 6) e `package.json` (script di build).
+- [x]  **Comprendere la struttura del progetto**: Familiarizza con i file principali, in particolare `py/new_initial_cart_items.ts` (i tuoi prodotti), `src/pizzaz-shop/index.tsx` (il widget del negozio che usa i prodotti, da rinominare in `src/electronics-shop/index.tsx` dopo refactoring Sezione 6), `src/shopping-cart/index.tsx` (il widget del carrello), `electronics_server_python/main.py` (il backend Python) e `package.json` (script di build).
   - Nota: I path con "pizzaz" sono ancora corretti perché il refactoring (Sezione 6) non è stato completato
   - **Dettagli struttura progetto**:
     - **File prodotti**: `py/new_initial_cart_items.ts` contiene array di prodotti elettronici con tipo `CartItem[]`
     - **Widget negozio**: `src/pizzaz-shop/index.tsx` importa prodotti e gestisce UI del negozio
     - **Widget carrello**: `src/shopping-cart/index.tsx` gestisce il carrello acquisti
-    - **Server Python**: `pizzaz_server_python/main.py` (364 righe) espone 6 tool/widget MCP
+    - **Server Python**: `electronics_server_python/main.py` espone tool MCP per i widget e per il flusso checkout/Stripe (PaymentIntent + sessioni checkout MCP).
     - **Build system**: `build-all.mts` genera bundle per tutti i widget (pizzaz, pizzaz-shop, pizzaz-carousel, pizzaz-list, pizzaz-albums, etc.)
     - **Package manager**: `package.json` versione 5.0.16, usa pnpm 10.24.0
 
@@ -125,7 +125,7 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
   - **Soluzione implementata**:
     1. ✅ **Funzione di trasformazione prodotti->places** (`electronics_server_python/main.py`):
        - Creata funzione `transform_products_to_places()` che converte prodotti dal database in formato "places"
-       - Mappa i campi: `id`, `name`, `price` (numero → stringa $/$$/$$$), `description`, `image` → `thumbnail`
+      - Mappa i campi: `id`, `name`, `price` (numero → stringa in euro, es. `34,59€`), `description`, `image` → `thumbnail`
        - Genera valori default per campi mancanti:
          - `coords`: Coordinate di default per San Francisco (distribuite in diverse zone)
          - `city`: Nome città di default basato su pattern circolare
@@ -1089,19 +1089,26 @@ Questa sezione verifica che il client/widget rispetti tutte le linee guida MCP C
 
 ### 9.3 Adattamento degli strumenti (Tools)
 
-- [x]  **Esaminare la definizione degli strumenti nel backend Python**: Capire come gli strumenti attuali (ad es. "pizza-shop") sono definiti in `pizzaz_server_python/main.py` (da rinominare in `electronics_server_python/main.py` dopo refactoring Sezione 6).
-  - Nota: Il path `pizzaz_server_python` è ancora corretto perché il refactoring (Sezione 6) non è stato completato
+- [x]  **Esaminare la definizione degli strumenti nel backend Python**: Capire come gli strumenti attuali sono definiti in `electronics_server_python/main.py`.
     - `electronics-map`: Widget mappa interattiva
     - `electronics-carousel`: Widget carosello prodotti
     - `electronics-albums`: Widget galleria prodotti
     - `electronics-list`: Widget lista prodotti
     - `electronics-shop`: Widget negozio interattivo completo
+    - `shopping-cart`: Widget carrello (checkout + riepilogo post-acquisto)
     - `product-list`: Tool che recupera prodotti da MotherDuck
+    - `create_checkout_session`: Tool MCP che crea una Stripe Checkout Session (legacy)
+    - `create_payment_intent`: Tool Stripe (PaymentIntent, solo card)
+    - `confirm_payment_intent`: Tool Stripe (conferma PaymentIntent)
+    - `checkout_create_session`: Crea sessione checkout MCP (totali + PaymentIntent)
+    - `checkout_update_session`: Aggiorna sessione checkout MCP (items/currency/promo)
+    - `checkout_complete_session`: Completa sessione checkout MCP (conferma pagamento)
 - [x]  **Modificare o creare nuovi strumenti per i prodotti elettronici**: Adattare gli strumenti esistenti o crearne di nuovi per interagire con i dati dei prodotti elettronici.
   - **Completato**: [2026-01-08] Tutti gli strumenti sono stati adattati per prodotti elettronici:
     1. ✅ Identificatori aggiornati da `pizza-*` a `electronics-*` (completato in Sezione 6)
     2. ✅ Titoli e descrizioni aggiornati per riflettere prodotti elettronici (completato in Sezione 6 e 7)
     3. ✅ Tool `product-list` implementato per recuperare prodotti da MotherDuck
+  - **Nota**: Tutti i tool Stripe/checkout richiedono la variabile d'ambiente `STRIPE_SECRET_KEY` sul server.
   - **Nota**: Se in futuro si volessero tool aggiuntivi (es. ricerca prodotti, filtri avanzati), si possono aggiungere seguendo lo stesso pattern.
     3. Valutare se aggiungere nuovi tool: `search-products` (cerca prodotti per nome/categoria), `product-details` (dettagli prodotto specifico), `filter-products` (filtra per prezzo/categoria)
     4. Aggiornare `TOOL_INPUT_SCHEMA` per rimuovere `pizzaTopping` e aggiungere parametri appropriati per prodotti elettronici
@@ -1196,7 +1203,7 @@ Quando sarà il momento di implementare il prompt, dovranno essere chiariti i se
 
 #### 10.2.2 Server MCP disponibili
 - [ ] **Elettronics server**: Come descrivere il server `electronics-python` e i suoi tool?
-  - Tool disponibili: `electronics-map`, `electronics-carousel`, `electronics-albums`, `electronics-list`, `electronics-shop`, `product-list`
+  - Tool disponibili: `electronics-map`, `electronics-carousel`, `electronics-albums`, `electronics-list`, `electronics-shop`, `shopping-cart`, `product-list`, `create_checkout_session`, `create_payment_intent`, `confirm_payment_intent`, `checkout_create_session`, `checkout_update_session`, `checkout_complete_session`
   - Quando usare ciascun tool?
   - Qual è il flusso di interazione consigliato?
 
@@ -1342,7 +1349,7 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 - **Informazioni chiave**:
   - `id`: Identificatore univoco del prodotto
   - `name`: Nome del prodotto
-  - `prices.amountMax`: Prezzo massimo del prodotto (numero)
+  - `prices`: Prezzo del prodotto (numero)
   - `descrizione_prodotto`: Descrizione dettagliata del prodotto
   - `imageURLs`: URL delle immagini del prodotto (può essere una lista separata da virgole)
   - `voto_prodotto_1_5`: Rating del prodotto su scala 1-5
@@ -1435,6 +1442,7 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 | "Mostrami prodotti per categoria" / "Voglio vedere tutti i televisori" | `electronics-albums` | Galleria organizzata per categoria (Video & TV, Informatica, Audio) |
 | "Verifica disponibilità in negozio" / "Dove posso trovare questo prodotto?" | `electronics-map` | Mappa interattiva con posizioni |
 | "Apri il negozio" / "Voglio comprare" / "Aggiungi al carrello" | `electronics-shop` | **Negozi completo con carrello, filtri per categoria e checkout (max 24 prodotti)** |
+| "Mostra il carrello" / "Voglio vedere il carrello" / "Cosa ho nel carrello?" | `shopping-cart` | Carrello condiviso con checkout e riepilogo post-acquisto |
 | "Confronta questi due modelli" / "Quali sono le differenze tecniche?" | `product-list` + tabella comparativa | Recupera dati per confronto dettagliato |
 | "Cerca prodotti con caratteristiche specifiche" / "Trova TV OLED sotto 1000€" | `product-list` | Analisi e filtri sui dati |
 | "Quale prodotto è meglio per gaming?" / Consulenza tecnica | `product-list` + widget appropriato | Analisi dati + visualizzazione |
@@ -1446,7 +1454,7 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 
 ⚠️ **Widget Interattivi**: I tool `electronics-map`, `electronics-carousel`, `electronics-albums`, `electronics-list`, e `electronics-shop` restituiscono widget HTML interattivi che vengono visualizzati direttamente nella chat. Questi widget permettono all'utente di interagire visivamente con i prodotti.
 
-⚠️ **Carrello e Checkout**: Il tool `electronics-shop` include funzionalità complete di carrello con possibilità di aggiungere/rimuovere prodotti, selezionare quantità, filtrare per categoria (Video & TV, Informatica, Audio), e procedere al checkout. Usalo quando l'utente è pronto ad acquistare.
+⚠️ **Carrello e Checkout**: Il tool `electronics-shop` include funzionalità complete di carrello con possibilità di aggiungere/rimuovere prodotti, selezionare quantità, filtrare per categoria (Video & TV, Informatica, Audio), e procedere al checkout. Usalo quando l'utente è pronto ad acquistare. Il widget `shopping-cart` completa il pagamento simulato, **svuota il carrello** e mostra un **riepilogo post-acquisto** con prodotti, totali, dati fattura e data di consegna. Il pulsante "Procedi al pagamento" apre una **modale** per inserire i dati di fatturazione. I prezzi includono IVA; la spedizione è mostrata nel carrello (gratis sopra 50€).
 
 ⚠️ **Database in Tempo Reale**: Il tool `product-list` recupera dati in tempo reale dal database MotherDuck (`app_gpt_elettronica`). I dati sono sempre aggiornati e includono tutti i dettagli tecnici necessari per confronti e analisi.
 
@@ -1582,6 +1590,43 @@ Questa sezione documenta le migliorie implementate per migliorare l'esperienza u
   - **Implementazione**:
     - Eliminati `useEffect`, `useMemo`, `useRef`, `useOpenAiGlobal`, `JsonPanel`, `usePrettyJson`, `createDefaultCartState` e variabili debug non usate.
   - **File modificati**:
+    - `src/shopping-cart/index.tsx`
+
+### 11.5 Riepilogo post-acquisto e svuotamento carrello
+
+- [x] **Riepilogo acquisto nel carrello**: Dopo un pagamento riuscito, il carrello viene svuotato e viene mostrato un riepilogo completo dell'ordine.
+  - **Completato**: [2026-01-16] Aggiunto riepilogo ordine con prodotti, totali, dati di fatturazione, data di consegna stimata e ringraziamento.
+  - **Implementazione**:
+    1. ✅ **Snapshot ordine** (`src/shopping-cart/index.tsx`):
+       - Salva i prodotti acquistati e calcola i totali (subtotale, IVA, spedizione, totale).
+    2. ✅ **Svuotamento carrello**:
+       - Aggiunta `clearCart()` in `src/use-cart.ts` per azzerare gli item dopo il successo.
+    3. ✅ **Riepilogo UI**:
+       - Sezione "Riepilogo acquisto" con elenco prodotti, totali, dati fattura e data consegna casuale (3-7 giorni).
+  - **File modificati**:
+    - `src/use-cart.ts`
+    - `src/shopping-cart/index.tsx`
+
+### 11.6 Modale checkout per dati fatturazione
+
+- [x] **Modale dati di fatturazione**: Il checkout nel carrello avviene tramite modale dedicata avviata dal pulsante "Procedi al pagamento".
+  - **Completato**: [2026-01-16] Spostati i campi di fatturazione in una modale con conferma pagamento.
+  - **Implementazione**:
+    1. ✅ **Pulsante checkout**: apre la modale per l'inserimento dei dati.
+    2. ✅ **Conferma e paga**: avvia il flusso di pagamento e chiude la modale al successo.
+  - **File modificati**:
+    - `src/shopping-cart/index.tsx`
+
+### 11.7 Spedizione visibile e IVA inclusa
+
+- [x] **Totali senza IVA esplicita**: L'IVA è considerata inclusa nei prezzi di listino; il carrello non aggiunge IVA al totale.
+  - **Completato**: [2026-01-16] Rimossa IVA dal calcolo dei totali, mantenuta la spedizione.
+  - **Implementazione**:
+    1. ✅ **Backend**: Calcolo dei totali con `tax = 0` in `electronics_server_python/main.py`.
+    2. ✅ **Frontend**: Totali e riepilogo senza riga IVA in `src/shopping-cart/index.tsx`.
+    3. ✅ **Messaggio cliente**: Spedizione mostrata nel carrello con nota "IVA inclusa".
+  - **File modificati**:
+    - `electronics_server_python/main.py`
     - `src/shopping-cart/index.tsx`
 
 - [x] **Compatibilità import JSX in TSX**: Garantita la risoluzione dei componenti `.jsx` importati in file TypeScript.
