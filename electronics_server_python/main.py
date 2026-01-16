@@ -212,22 +212,22 @@ def filter_products_by_category(products: List[Dict[str, Any]], category: str) -
     products_without_categories = 0
     
     for product in products:
-        # Estrai tutte le categorie/tag del prodotto (da categories o primaryCategories)
+        # Estrai tutte le categorie/tag del prodotto (da primaryCategories o categories)
         product_categories_raw = []
         
-        # Prova categories (campo principale nel database)
-        if product.get("categories"):
-            if isinstance(product["categories"], list):
-                product_categories_raw.extend([str(cat).strip() for cat in product["categories"]])
-            elif isinstance(product["categories"], str):
-                product_categories_raw.extend([cat.strip() for cat in product["categories"].split(",")])
-        
-        # Prova primaryCategories (fallback)
+        # Prova primaryCategories (campo principale)
         if product.get("primaryCategories"):
             if isinstance(product["primaryCategories"], list):
                 product_categories_raw.extend([str(cat).strip() for cat in product["primaryCategories"]])
             elif isinstance(product["primaryCategories"], str):
                 product_categories_raw.extend([cat.strip() for cat in product["primaryCategories"].split(",")])
+        
+        # Prova categories (fallback)
+        if product.get("categories"):
+            if isinstance(product["categories"], list):
+                product_categories_raw.extend([str(cat).strip() for cat in product["categories"]])
+            elif isinstance(product["categories"], str):
+                product_categories_raw.extend([cat.strip() for cat in product["categories"].split(",")])
         
         # Normalizza le categorie del prodotto (lowercase)
         product_categories = [cat.lower().strip() for cat in product_categories_raw if cat]
