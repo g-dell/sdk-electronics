@@ -278,15 +278,25 @@ export function useCart() {
       if (typeof product.price === "number") {
         price = product.price;
       } else if (typeof product.price === "string") {
+        const rawPrice = product.price.trim();
         // Estrai numero da stringhe come "$", "$$", "$$$" o numeri
-        if (product.price === "$") {
+        if (rawPrice === "$") {
           price = 25; // Default per $
-        } else if (product.price === "$$") {
+        } else if (rawPrice === "$$") {
           price = 75; // Default per $$
-        } else if (product.price === "$$$") {
+        } else if (rawPrice === "$$$") {
           price = 150; // Default per $$$
         } else {
-          price = parseFloat(product.price.replace(/[^0-9.]/g, "")) || 0;
+          let normalized = rawPrice;
+          if (normalized.includes(",")) {
+            if (normalized.includes(".")) {
+              normalized = normalized.replace(/\./g, "").replace(",", ".");
+            } else {
+              normalized = normalized.replace(",", ".");
+            }
+          }
+          const numeric = normalized.replace(/[^0-9.-]/g, "");
+          price = parseFloat(numeric) || 0;
         }
       }
 
