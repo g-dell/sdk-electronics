@@ -116,6 +116,13 @@ function App() {
     }
     if (typeof response === "object") {
       const payload = response as Record<string, unknown>;
+      if (
+        typeof payload.id === "string" ||
+        typeof payload.status === "string" ||
+        typeof payload.cart === "object"
+      ) {
+        return payload;
+      }
       const structured = payload.structuredContent as Record<string, unknown> | undefined;
       if (structured && typeof structured === "object") {
         return structured;

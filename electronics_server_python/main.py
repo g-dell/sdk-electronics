@@ -2386,7 +2386,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 content=[
                     types.TextContent(
                         type="text",
-                        text="Checkout session creata con successo.",
+                        text=session_obj.model_dump_json(),
                     )
                 ],
                 structuredContent=session_obj.model_dump(),
@@ -2485,7 +2485,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 content=[
                     types.TextContent(
                         type="text",
-                        text="Checkout session aggiornata con successo.",
+                        text=session_obj.model_dump_json(),
                     )
                 ],
                 structuredContent=session_obj.model_dump(),
@@ -2591,7 +2591,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 content=[
                     types.TextContent(
                         type="text",
-                        text="Checkout session completata con successo.",
+                        text=response_obj.model_dump_json(),
                     )
                 ],
                 structuredContent=response_obj.model_dump(),
