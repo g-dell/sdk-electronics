@@ -100,43 +100,61 @@ function App() {
     }
   }, []);
 
-  function buildCheckoutReturnUrls() {
-    const baseUrl = new URL(window.location.href);
-    const successUrl = new URL(baseUrl.toString());
-    successUrl.searchParams.set("checkout", "success");
-    const cancelUrl = new URL(baseUrl.toString());
-    cancelUrl.searchParams.set("checkout", "cancel");
-    return { successUrl: successUrl.toString(), cancelUrl: cancelUrl.toString() };
-  }
-
-  function extractCheckoutUrl(response: unknown): string | null {
+  function extractStructuredContent(
+    response: unknown
+  ): Record<string, unknown> | null {
     if (!response) {
       return null;
     }
     if (typeof response === "string") {
       try {
         const parsed = JSON.parse(response) as Record<string, unknown>;
-        return extractCheckoutUrl(parsed);
+        return extractStructuredContent(parsed);
       } catch {
         return null;
       }
     }
     if (typeof response === "object") {
       const payload = response as Record<string, unknown>;
-      if (typeof payload.url === "string") {
-        return payload.url;
-      }
       const structured = payload.structuredContent as Record<string, unknown> | undefined;
-      if (structured && typeof structured.url === "string") {
-        return structured.url;
+      if (structured && typeof structured === "object") {
+        return structured;
       }
       if (typeof payload.result === "string") {
         try {
           const parsed = JSON.parse(payload.result) as Record<string, unknown>;
-          return extractCheckoutUrl(parsed);
+          return extractStructuredContent(parsed);
         } catch {
           return null;
         }
+      }
+    }
+    return null;
+  }
+
+  function extractSessionId(response: unknown): string | null {
+    const structured = extractStructuredContent(response);
+    if (structured && typeof structured.id === "string") {
+      return structured.id;
+    }
+    if (response && typeof response === "object") {
+      const payload = response as Record<string, unknown>;
+      if (typeof payload.id === "string") {
+        return payload.id;
+      }
+    }
+    return null;
+  }
+
+  function extractStatus(response: unknown): string | null {
+    const structured = extractStructuredContent(response);
+    if (structured && typeof structured.status === "string") {
+      return structured.status;
+    }
+    if (response && typeof response === "object") {
+      const payload = response as Record<string, unknown>;
+      if (typeof payload.status === "string") {
+        return payload.status;
       }
     }
     return null;
@@ -164,50 +182,37 @@ function App() {
     setIsCheckingOut(true);
     setCheckoutError(null);
     try {
-      const { successUrl, cancelUrl } = buildCheckoutReturnUrls();
-      const totalAmount = cartItems.reduce(
-        (sum, item) => sum + (item.price ?? 0) * (item.quantity ?? 0),
-        0
+      const createResponse = await window.openai.callTool(
+        "checkout_create_session",
+        {
+          items: cartItems.map((item) => ({
+            name: item.name,
+            quantity: item.quantity ?? 1,
+            unit_amount_major: item.price,
+            description: item.shortDescription ?? item.description ?? "",
+          })),
+          currency: "eur",
+          buyer_email: customerEmail.trim(),
+          shared_payment_token: "test_spt_visa",
+        }
       );
-      const billingDetails = {
-        name: billingName.trim(),
-        address_line1: billingAddress1.trim(),
-        address_line2: billingAddress2.trim(),
-        city: billingCity.trim(),
-        postal_code: billingPostalCode.trim(),
-        country: billingCountry.trim(),
-      };
-      const cleanedBillingDetails = Object.fromEntries(
-        Object.entries(billingDetails).filter(([, value]) => value)
-      );
-      const response = await window.openai.callTool("create_checkout_session", {
-        items: cartItems.map((item) => ({
-          name: item.name,
-          quantity: item.quantity ?? 1,
-          unit_amount_major: item.price,
-          description: item.shortDescription ?? item.description ?? "",
-        })),
-        currency: "eur",
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        customer_email: customerEmail.trim(),
-        billing_details:
-          Object.keys(cleanedBillingDetails).length > 0
-            ? cleanedBillingDetails
-            : undefined,
-        metadata: {
-          cart_items: String(cartItems.length),
-          cart_total: totalAmount.toFixed(2),
-        },
-      });
-      const checkoutUrl = extractCheckoutUrl(response);
-      if (!checkoutUrl) {
-        throw new Error("URL di checkout non disponibile.");
+      const sessionId = extractSessionId(createResponse);
+      if (!sessionId) {
+        throw new Error("ID sessione checkout non disponibile.");
       }
-      if (window.openai?.openExternal) {
-        window.openai.openExternal({ href: checkoutUrl });
+
+      const completeResponse = await window.openai.callTool(
+        "checkout_complete_session",
+        {
+          session_id: sessionId,
+        }
+      );
+      const status = extractStatus(completeResponse);
+      if (status === "succeeded") {
+        setCheckoutStatus("success");
       } else {
-        window.location.href = checkoutUrl;
+        setCheckoutStatus("cancel");
+        throw new Error("Pagamento non riuscito.");
       }
     } catch (error) {
       setCheckoutError(error instanceof Error ? error.message : "Errore durante il checkout.");
