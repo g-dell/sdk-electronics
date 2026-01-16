@@ -541,7 +541,7 @@ function App() {
                 </p>
               </div>
             )}
-            {itemCards}
+            {!purchaseSummary ? itemCards : null}
             {!purchaseSummary && (
               <>
                 <div className="rounded-2xl border border-black/10 bg-white/70 px-4 py-3 text-sm text-black/70">
