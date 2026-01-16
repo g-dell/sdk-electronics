@@ -575,12 +575,12 @@ function App() {
       <AnimatePresence>
         {showBillingModal && !purchaseSummary && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
             role="dialog"
             aria-modal="true"
             aria-label="Dati per il checkout"
           >
-            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
+            <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-black/60">
                   Dati per il checkout
