@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AnimatePresence } from "framer-motion";
 import { useCart } from "../use-cart";
@@ -19,6 +19,16 @@ function App() {
   // Ignora completamente qualsiasi altro dato in widgetState (es. da electronics-shop)
   const { cartItems, addToCart, removeFromCart } = useCart();
   const [selectedItem, setSelectedItem] = useState<CartItem | null>(null);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutStatus, setCheckoutStatus] = useState<"success" | "cancel" | null>(null);
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [billingName, setBillingName] = useState("");
+  const [billingAddress1, setBillingAddress1] = useState("");
+  const [billingAddress2, setBillingAddress2] = useState("");
+  const [billingCity, setBillingCity] = useState("");
+  const [billingPostalCode, setBillingPostalCode] = useState("");
+  const [billingCountry, setBillingCountry] = useState("");
   const animationStyles = `
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(10px); }
@@ -75,6 +85,135 @@ function App() {
       }
     }
     return JarIcon;
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const url = new URL(window.location.href);
+    const status = url.searchParams.get("checkout");
+    if (status === "success" || status === "cancel") {
+      setCheckoutStatus(status);
+      url.searchParams.delete("checkout");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
+
+  function buildCheckoutReturnUrls() {
+    const baseUrl = new URL(window.location.href);
+    const successUrl = new URL(baseUrl.toString());
+    successUrl.searchParams.set("checkout", "success");
+    const cancelUrl = new URL(baseUrl.toString());
+    cancelUrl.searchParams.set("checkout", "cancel");
+    return { successUrl: successUrl.toString(), cancelUrl: cancelUrl.toString() };
+  }
+
+  function extractCheckoutUrl(response: unknown): string | null {
+    if (!response) {
+      return null;
+    }
+    if (typeof response === "string") {
+      try {
+        const parsed = JSON.parse(response) as Record<string, unknown>;
+        return extractCheckoutUrl(parsed);
+      } catch {
+        return null;
+      }
+    }
+    if (typeof response === "object") {
+      const payload = response as Record<string, unknown>;
+      if (typeof payload.url === "string") {
+        return payload.url;
+      }
+      const structured = payload.structuredContent as Record<string, unknown> | undefined;
+      if (structured && typeof structured.url === "string") {
+        return structured.url;
+      }
+      if (typeof payload.result === "string") {
+        try {
+          const parsed = JSON.parse(payload.result) as Record<string, unknown>;
+          return extractCheckoutUrl(parsed);
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  }
+
+  async function handleCheckout() {
+    if (!window.openai?.callTool) {
+      setCheckoutError("callTool non disponibile in questo contesto.");
+      return;
+    }
+    if (cartItems.length === 0) {
+      return;
+    }
+    if (!customerEmail.trim()) {
+      setCheckoutError("Inserisci un'email per continuare.");
+      return;
+    }
+    const invalidItem = cartItems.find(
+      (item) => !item.price || item.price <= 0 || !item.quantity || item.quantity <= 0
+    );
+    if (invalidItem) {
+      setCheckoutError("Impossibile avviare il pagamento: alcuni articoli non hanno un prezzo valido.");
+      return;
+    }
+    setIsCheckingOut(true);
+    setCheckoutError(null);
+    try {
+      const { successUrl, cancelUrl } = buildCheckoutReturnUrls();
+      const totalAmount = cartItems.reduce(
+        (sum, item) => sum + (item.price ?? 0) * (item.quantity ?? 0),
+        0
+      );
+      const billingDetails = {
+        name: billingName.trim(),
+        address_line1: billingAddress1.trim(),
+        address_line2: billingAddress2.trim(),
+        city: billingCity.trim(),
+        postal_code: billingPostalCode.trim(),
+        country: billingCountry.trim(),
+      };
+      const cleanedBillingDetails = Object.fromEntries(
+        Object.entries(billingDetails).filter(([, value]) => value)
+      );
+      const response = await window.openai.callTool("create_checkout_session", {
+        items: cartItems.map((item) => ({
+          name: item.name,
+          quantity: item.quantity ?? 1,
+          unit_amount_major: item.price,
+          description: item.shortDescription ?? item.description ?? "",
+        })),
+        currency: "eur",
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        customer_email: customerEmail.trim(),
+        billing_details:
+          Object.keys(cleanedBillingDetails).length > 0
+            ? cleanedBillingDetails
+            : undefined,
+        metadata: {
+          cart_items: String(cartItems.length),
+          cart_total: totalAmount.toFixed(2),
+        },
+      });
+      const checkoutUrl = extractCheckoutUrl(response);
+      if (!checkoutUrl) {
+        throw new Error("URL di checkout non disponibile.");
+      }
+      if (window.openai?.openExternal) {
+        window.openai.openExternal({ href: checkoutUrl });
+      } else {
+        window.location.href = checkoutUrl;
+      }
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : "Errore durante il checkout.");
+    } finally {
+      setIsCheckingOut(false);
+    }
   }
 
   const itemCards = cartItems.length ? (
@@ -189,14 +328,115 @@ function App() {
                 {cartItems.length} items
               </span>
             </header>
+            {checkoutStatus && (
+              <div
+                className={`rounded-2xl border px-4 py-3 text-sm ${
+                  checkoutStatus === "success"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-700"
+                }`}
+                role="status"
+              >
+                {checkoutStatus === "success"
+                  ? "Pagamento completato. Grazie per l'acquisto!"
+                  : "Pagamento annullato. Puoi riprovare quando vuoi."}
+              </div>
+            )}
             {itemCards}
+            <div className="rounded-2xl border border-black/10 bg-white/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/60">
+                Dati per il checkout
+              </p>
+              <div className="mt-3 grid gap-3">
+                <label className="text-xs font-semibold text-black/70">
+                  Email
+                  <input
+                    type="email"
+                    value={customerEmail}
+                    onChange={(event) => setCustomerEmail(event.target.value)}
+                    placeholder="nome@esempio.com"
+                    className="mt-1 w-full rounded-xl border border-black/20 px-3 py-2 text-sm"
+                    required
+                  />
+                </label>
+                <label className="text-xs font-semibold text-black/70">
+                  Nome e cognome (fatturazione)
+                  <input
+                    type="text"
+                    value={billingName}
+                    onChange={(event) => setBillingName(event.target.value)}
+                    placeholder="Mario Rossi"
+                    className="mt-1 w-full rounded-xl border border-black/20 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-black/70">
+                  Indirizzo
+                  <input
+                    type="text"
+                    value={billingAddress1}
+                    onChange={(event) => setBillingAddress1(event.target.value)}
+                    placeholder="Via Roma 1"
+                    className="mt-1 w-full rounded-xl border border-black/20 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-black/70">
+                  Indirizzo (opzionale)
+                  <input
+                    type="text"
+                    value={billingAddress2}
+                    onChange={(event) => setBillingAddress2(event.target.value)}
+                    placeholder="Scala, interno, ecc."
+                    className="mt-1 w-full rounded-xl border border-black/20 px-3 py-2 text-sm"
+                  />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-semibold text-black/70">
+                    Città
+                    <input
+                      type="text"
+                      value={billingCity}
+                      onChange={(event) => setBillingCity(event.target.value)}
+                      placeholder="Milano"
+                      className="mt-1 w-full rounded-xl border border-black/20 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-black/70">
+                    CAP
+                    <input
+                      type="text"
+                      value={billingPostalCode}
+                      onChange={(event) => setBillingPostalCode(event.target.value)}
+                      placeholder="20100"
+                      className="mt-1 w-full rounded-xl border border-black/20 px-3 py-2 text-sm"
+                    />
+                  </label>
+                </div>
+                <label className="text-xs font-semibold text-black/70">
+                  Paese
+                  <input
+                    type="text"
+                    value={billingCountry}
+                    onChange={(event) => setBillingCountry(event.target.value)}
+                    placeholder="IT"
+                    className="mt-1 w-full rounded-xl border border-black/20 px-3 py-2 text-sm"
+                  />
+                </label>
+              </div>
+            </div>
             <button
               type="button"
-              disabled={cartItems.length === 0}
+              disabled={cartItems.length === 0 || isCheckingOut}
+              onClick={handleCheckout}
               className="w-full rounded-2xl border border-black/30 bg-white py-3 text-sm font-semibold text-black/70 transition hover:border-black/50 disabled:cursor-not-allowed disabled:opacity-70"
+              aria-busy={isCheckingOut}
             >
-              Check out
+              {isCheckingOut ? "Apertura checkout..." : "Procedi al pagamento"}
             </button>
+            {checkoutError && (
+              <p className="text-xs text-red-600" role="alert">
+                {checkoutError}
+              </p>
+            )}
           </section>
         </div>
       </div>

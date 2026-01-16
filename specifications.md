@@ -98,13 +98,13 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
 
 ## 1. Preparazione dell'ambiente
 
-- [x]  **Comprendere la struttura del progetto**: Familiarizza con i file principali, in particolare `py/new_initial_cart_items.ts` (i tuoi prodotti), `src/pizzaz-shop/index.tsx` (il widget del negozio che usa i prodotti, da rinominare in `src/electronics-shop/index.tsx` dopo refactoring Sezione 6), `src/shopping-cart/index.tsx` (il widget del carrello), `pizzaz_server_python/main.py` (il backend Python, da rinominare in `electronics_server_python/main.py` dopo refactoring Sezione 6) e `package.json` (script di build).
+- [x]  **Comprendere la struttura del progetto**: Familiarizza con i file principali, in particolare `py/new_initial_cart_items.ts` (i tuoi prodotti), `src/pizzaz-shop/index.tsx` (il widget del negozio che usa i prodotti, da rinominare in `src/electronics-shop/index.tsx` dopo refactoring Sezione 6), `src/shopping-cart/index.tsx` (il widget del carrello), `electronics_server_python/main.py` (il backend Python) e `package.json` (script di build).
   - Nota: I path con "pizzaz" sono ancora corretti perché il refactoring (Sezione 6) non è stato completato
   - **Dettagli struttura progetto**:
     - **File prodotti**: `py/new_initial_cart_items.ts` contiene array di prodotti elettronici con tipo `CartItem[]`
     - **Widget negozio**: `src/pizzaz-shop/index.tsx` importa prodotti e gestisce UI del negozio
     - **Widget carrello**: `src/shopping-cart/index.tsx` gestisce il carrello acquisti
-    - **Server Python**: `pizzaz_server_python/main.py` (364 righe) espone 6 tool/widget MCP
+    - **Server Python**: `electronics_server_python/main.py` espone 7 tool MCP (6 widget + 1 tool Stripe)
     - **Build system**: `build-all.mts` genera bundle per tutti i widget (pizzaz, pizzaz-shop, pizzaz-carousel, pizzaz-list, pizzaz-albums, etc.)
     - **Package manager**: `package.json` versione 5.0.16, usa pnpm 10.24.0
 
@@ -1089,19 +1089,20 @@ Questa sezione verifica che il client/widget rispetti tutte le linee guida MCP C
 
 ### 9.3 Adattamento degli strumenti (Tools)
 
-- [x]  **Esaminare la definizione degli strumenti nel backend Python**: Capire come gli strumenti attuali (ad es. "pizza-shop") sono definiti in `pizzaz_server_python/main.py` (da rinominare in `electronics_server_python/main.py` dopo refactoring Sezione 6).
-  - Nota: Il path `pizzaz_server_python` è ancora corretto perché il refactoring (Sezione 6) non è stato completato
+- [x]  **Esaminare la definizione degli strumenti nel backend Python**: Capire come gli strumenti attuali sono definiti in `electronics_server_python/main.py`.
     - `electronics-map`: Widget mappa interattiva
     - `electronics-carousel`: Widget carosello prodotti
     - `electronics-albums`: Widget galleria prodotti
     - `electronics-list`: Widget lista prodotti
     - `electronics-shop`: Widget negozio interattivo completo
     - `product-list`: Tool che recupera prodotti da MotherDuck
+  - `create_checkout_session`: Tool MCP che crea una Stripe Checkout Session
 - [x]  **Modificare o creare nuovi strumenti per i prodotti elettronici**: Adattare gli strumenti esistenti o crearne di nuovi per interagire con i dati dei prodotti elettronici.
   - **Completato**: [2026-01-08] Tutti gli strumenti sono stati adattati per prodotti elettronici:
     1. ✅ Identificatori aggiornati da `pizza-*` a `electronics-*` (completato in Sezione 6)
     2. ✅ Titoli e descrizioni aggiornati per riflettere prodotti elettronici (completato in Sezione 6 e 7)
     3. ✅ Tool `product-list` implementato per recuperare prodotti da MotherDuck
+  - **Nota**: Il tool `create_checkout_session` richiede la variabile d'ambiente `STRIPE_SECRET_KEY` sul server.
   - **Nota**: Se in futuro si volessero tool aggiuntivi (es. ricerca prodotti, filtri avanzati), si possono aggiungere seguendo lo stesso pattern.
     3. Valutare se aggiungere nuovi tool: `search-products` (cerca prodotti per nome/categoria), `product-details` (dettagli prodotto specifico), `filter-products` (filtra per prezzo/categoria)
     4. Aggiornare `TOOL_INPUT_SCHEMA` per rimuovere `pizzaTopping` e aggiungere parametri appropriati per prodotti elettronici
@@ -1196,7 +1197,7 @@ Quando sarà il momento di implementare il prompt, dovranno essere chiariti i se
 
 #### 10.2.2 Server MCP disponibili
 - [ ] **Elettronics server**: Come descrivere il server `electronics-python` e i suoi tool?
-  - Tool disponibili: `electronics-map`, `electronics-carousel`, `electronics-albums`, `electronics-list`, `electronics-shop`, `product-list`
+  - Tool disponibili: `electronics-map`, `electronics-carousel`, `electronics-albums`, `electronics-list`, `electronics-shop`, `product-list`, `create_checkout_session`
   - Quando usare ciascun tool?
   - Qual è il flusso di interazione consigliato?
 
@@ -1342,7 +1343,7 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 - **Informazioni chiave**:
   - `id`: Identificatore univoco del prodotto
   - `name`: Nome del prodotto
-  - `prices.amountMax`: Prezzo massimo del prodotto (numero)
+  - `prices`: Prezzo del prodotto (numero)
   - `descrizione_prodotto`: Descrizione dettagliata del prodotto
   - `imageURLs`: URL delle immagini del prodotto (può essere una lista separata da virgole)
   - `voto_prodotto_1_5`: Rating del prodotto su scala 1-5

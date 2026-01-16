@@ -21,6 +21,7 @@ import re
 from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
+from decimal import Decimal, ROUND_HALF_UP
 
 # Carica il file .env dalla root del progetto (non dalla directory electronics_server_python)
 # __file__ è main.py in electronics_server_python/, quindi parent.parent è la root
@@ -81,6 +82,7 @@ from starlette.responses import HTMLResponse as StarletteHTMLResponse, Response
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import httpx
+import stripe
 from urllib.parse import urlparse, urlencode
 
 
@@ -400,10 +402,17 @@ def rank_products_by_criteria(
     def get_price(product: Dict[str, Any]) -> float:
         """Estrae il prezzo dal prodotto."""
         price_num = 0
-        if "prices.amountMax" in product:
-            price_num = product.get("prices.amountMax", 0)
-        elif isinstance(product.get("prices"), dict):
-            price_num = product.get("prices", {}).get("amountMax", 0)
+        if "prices" in product:
+            prices_value = product.get("prices")
+            if isinstance(prices_value, (int, float)):
+                price_num = prices_value
+            elif isinstance(prices_value, str):
+                try:
+                    price_num = float(prices_value)
+                except ValueError:
+                    price_num = 0
+            elif isinstance(prices_value, dict):
+                price_num = prices_value.get("amountMax", 0) or prices_value.get("amountMin", 0)
         return float(price_num) if price_num else 0.0
     
     def calculate_relevance_score(product: Dict[str, Any]) -> tuple:
@@ -555,7 +564,7 @@ def transform_products_to_places(
     - id, name, coords (lat, lon), description, city, rating, price (stringa), thumbnail, stock
     
     I prodotti dal database prodotti_xeel_shop hanno:
-    - id, name, prices.amountMax/prices.amountMin, descrizione_prodotto, imageURLs, 
+    - id, name, prices, descrizione_prodotto, imageURLs, 
       voto_prodotto_1_5, categories, primaryCategories, stock
     
     Questa funzione mappa i campi dal database e genera valori default per campi mancanti 
@@ -567,7 +576,7 @@ def transform_products_to_places(
     Mapping colonne DB -> places:
     - id -> id
     - name -> name  
-    - prices.amountMax -> price (convertito in $/$$/$$$)
+    - prices -> price (convertito in $/$$/$$$)
     - descrizione_prodotto -> description
     - imageURLs -> thumbnail
     - voto_prodotto_1_5 -> rating (con fallback a 4.5)
@@ -648,14 +657,20 @@ def transform_products_to_places(
                 f"Using unique ID: '{product_id}' for product '{product.get('name', 'Unknown')}'"
             )
         
-        # Ottieni il prezzo da prices.amountMax (colonna nel DB con dot notation)
-        # DuckDB restituisce le colonne con dot come chiavi con dot o come dict annidato
+        # Ottieni il prezzo dalla colonna prices
+        # Può essere numero, stringa numerica o dict (amountMax/amountMin)
         price_num = 0
-        if "prices.amountMax" in product:
-            price_num = product.get("prices.amountMax", 0)
-        elif isinstance(product.get("prices"), dict):
-            price_num = product.get("prices", {}).get("amountMax", 0)
-        
+        if "prices" in product:
+            prices_value = product.get("prices")
+            if isinstance(prices_value, (int, float)):
+                price_num = prices_value
+            elif isinstance(prices_value, str):
+                try:
+                    price_num = float(prices_value)
+                except ValueError:
+                    price_num = 0
+            elif isinstance(prices_value, dict):
+                price_num = prices_value.get("amountMax", 0) or prices_value.get("amountMin", 0)
         # Converti prezzo in formato stringa in euro (es. 34,59€)
         if isinstance(price_num, (int, float)) and price_num > 0:
             price_str = f"{price_num:.2f}".replace(".", ",") + "€"
@@ -1267,6 +1282,129 @@ CATEGORY_FILTER_INPUT_SCHEMA: Dict[str, Any] = {
     "additionalProperties": False,
 }
 
+CHECKOUT_SESSION_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "items": {
+            "type": "array",
+            "description": "Articoli del carrello da includere nella Checkout Session.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "quantity": {"type": "integer", "minimum": 1},
+                    "unit_amount_major": {
+                        "type": "number",
+                        "description": "Prezzo unitario in major unit (es. 10.50 per EUR).",
+                    },
+                    "description": {"type": "string"},
+                },
+                "required": ["name", "quantity", "unit_amount_major"],
+                "additionalProperties": False,
+            },
+        },
+        "currency": {
+            "type": "string",
+            "description": "Codice valuta ISO (es. 'eur').",
+        },
+        "success_url": {
+            "type": "string",
+            "description": "URL di ritorno dopo pagamento riuscito.",
+        },
+        "cancel_url": {
+            "type": "string",
+            "description": "URL di ritorno dopo annullamento.",
+        },
+        "customer_email": {
+            "type": "string",
+            "description": "Email cliente (opzionale).",
+        },
+        "billing_details": {
+            "type": "object",
+            "description": "Dati di fatturazione (opzionali).",
+            "properties": {
+                "name": {"type": "string"},
+                "address_line1": {"type": "string"},
+                "address_line2": {"type": "string"},
+                "city": {"type": "string"},
+                "postal_code": {"type": "string"},
+                "country": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+        "metadata": {
+            "type": "object",
+            "description": "Metadata opzionale per la sessione.",
+            "additionalProperties": {"type": "string"},
+        },
+    },
+    "required": ["items", "currency", "success_url", "cancel_url"],
+    "additionalProperties": False,
+}
+
+
+class CheckoutItemInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1)
+    quantity: int = Field(gt=0)
+    unit_amount_major: float = Field(gt=0)
+    description: str | None = None
+
+
+class CheckoutSessionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: List[CheckoutItemInput]
+    currency: str = Field(min_length=3)
+    success_url: str = Field(min_length=1)
+    cancel_url: str = Field(min_length=1)
+    customer_email: str | None = None
+    billing_details: Dict[str, str] | None = None
+    metadata: Dict[str, str] | None = None
+
+
+ZERO_DECIMAL_CURRENCIES = {
+    "bif",
+    "clp",
+    "djf",
+    "gnf",
+    "jpy",
+    "kmf",
+    "krw",
+    "mga",
+    "pyg",
+    "rwf",
+    "ugx",
+    "vnd",
+    "vuv",
+    "xaf",
+    "xof",
+    "xpf",
+}
+
+THREE_DECIMAL_CURRENCIES = {
+    "bhd",
+    "jod",
+    "kwd",
+    "omr",
+    "tnd",
+}
+
+
+def _currency_exponent(currency: str) -> int:
+    currency_lower = currency.lower()
+    if currency_lower in ZERO_DECIMAL_CURRENCIES:
+        return 0
+    if currency_lower in THREE_DECIMAL_CURRENCIES:
+        return 3
+    return 2
+
+
+def _to_minor_amount(amount_major: float, currency: str) -> int:
+    exponent = _currency_exponent(currency)
+    quantize_exp = Decimal(1) / (Decimal(10) ** exponent)
+    decimal_amount = Decimal(str(amount_major)).quantize(quantize_exp, rounding=ROUND_HALF_UP)
+    return int(decimal_amount * (10 ** exponent))
+
 
 
 def _resource_description(widget: ElectronicsWidget) -> str:
@@ -1397,6 +1535,25 @@ async def _list_tools() -> List[types.Tool]:
                 "destructiveHint": False,
                 "openWorldHint": False,
                 "readOnlyHint": True,
+            },
+        )
+    )
+    
+    tools.append(
+        types.Tool(
+            name="create_checkout_session",
+            title="Create Checkout Session",
+            description=(
+                "Crea una Stripe Checkout Session per completare il pagamento del carrello. "
+                "Usa questo tool quando l'utente decide di acquistare e vuoi generare il link "
+                "di checkout. Richiede gli articoli del carrello con prezzi in major unit, "
+                "la valuta, e gli URL di ritorno (success/cancel). Restituisce l'URL di checkout."
+            ),
+            inputSchema=deepcopy(CHECKOUT_SESSION_INPUT_SCHEMA),
+            annotations={
+                "destructiveHint": False,
+                "openWorldHint": True,
+                "readOnlyHint": False,
             },
         )
     )
@@ -1611,6 +1768,131 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     isError=True,
                 )
             )
+    
+    if tool_name == "create_checkout_session":
+        try:
+            checkout_input = CheckoutSessionInput.model_validate(arguments or {})
+        except ValidationError as e:
+            error_msg = f"Invalid input for {tool_name}: {str(e)}"
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+        
+        stripe_secret_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+        if not stripe_secret_key:
+            error_msg = "STRIPE_SECRET_KEY non configurata. Imposta la variabile d'ambiente per creare la Checkout Session."
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+        
+        stripe.api_key = stripe_secret_key
+        currency = checkout_input.currency.lower()
+        
+        line_items = []
+        for item in checkout_input.items:
+            unit_amount = _to_minor_amount(item.unit_amount_major, currency)
+            if unit_amount <= 0:
+                error_msg = f"Invalid unit_amount for item '{item.name}'."
+                logger.warning(error_msg)
+                return types.ServerResult(
+                    types.CallToolResult(
+                        content=[
+                            types.TextContent(
+                                type="text",
+                                text=error_msg,
+                            )
+                        ],
+                        isError=True,
+                    )
+                )
+            product_data = {"name": item.name}
+            if item.description:
+                product_data["description"] = item.description
+            line_items.append(
+                {
+                    "price_data": {
+                        "currency": currency,
+                        "product_data": product_data,
+                        "unit_amount": unit_amount,
+                    },
+                    "quantity": item.quantity,
+                }
+            )
+        
+        metadata = dict(checkout_input.metadata or {})
+        if checkout_input.billing_details:
+            for key, value in checkout_input.billing_details.items():
+                if value:
+                    metadata[f"billing_{key}"] = value
+        
+        customer_email = checkout_input.customer_email.strip() if checkout_input.customer_email else None
+        
+        try:
+            session = stripe.checkout.Session.create(
+                mode="payment",
+                line_items=line_items,
+                success_url=checkout_input.success_url,
+                cancel_url=checkout_input.cancel_url,
+                customer_email=customer_email,
+                billing_address_collection="required",
+                metadata=metadata,
+            )
+        except Exception as e:
+            error_msg = f"Error creating checkout session: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+        
+        result = types.ServerResult(
+            types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text="Checkout session creata con successo.",
+                    )
+                ],
+                structuredContent={
+                    "id": session.id,
+                    "url": session.url,
+                    "currency": session.currency,
+                    "amount_total": session.amount_total,
+                },
+            )
+        )
+        
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(
+            f"Tool execution completed: tool={tool_name}, success=True, duration={duration:.3f}s"
+        )
+        
+        return result
     
     widget = WIDGETS_BY_ID.get(tool_name)
     if widget is None:

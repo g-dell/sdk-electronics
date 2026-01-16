@@ -93,10 +93,10 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
 
 ### Prezzo mostrato come $/$$/$$$ invece di valore numerico
 - [x] **Bug Prezzo - Formattazione prezzo non numerica**: [2026-01-15]
-  - **Bug trovato**: [2026-01-15] Il prezzo veniva convertito in `$/$$/$$$` in `transform_products_to_places()` invece di mostrare il valore reale dal database (`prices.amountMax`).
+  - **Bug trovato**: [2026-01-15] Il prezzo veniva convertito in `$/$$/$$$` in `transform_products_to_places()` invece di mostrare il valore reale dal database (`prices`).
   - **Bug risolto**: [2026-01-15] La conversione è stata aggiornata per formattare il prezzo numerico in euro con due decimali e separatore decimale a virgola (es. `34,59€`).
   - **Soluzione applicata**:
-    1. Aggiornata la conversione prezzo in `electronics_server_python/main.py` per usare `prices.amountMax` e formattare `€`.
+    1. Aggiornata la conversione prezzo in `electronics_server_python/main.py` per usare `prices` e formattare `€`.
     2. Aggiornata la documentazione in `specifications.md` sulla mappatura del campo `price`.
   - **Verificato**: [2026-01-15] I widget mostrano il prezzo numerico con simbolo `€` al posto di `$/$$/$$$`.
 

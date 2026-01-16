@@ -191,15 +191,22 @@ const getRelatedItems = (current: CartItem, items: CartItem[]) => {
 };
 
 const getItemPrice = (item: CartItem) => {
-  const rawPrice = (item as Record<string, unknown>)["prices.amountMax"];
+  const rawPrice = (item as Record<string, unknown>).prices;
   if (typeof rawPrice === "number" && Number.isFinite(rawPrice)) {
     return rawPrice;
   }
-
-  const nestedPrice = (item as { prices?: { amountMax?: number } }).prices
-    ?.amountMax;
-  if (typeof nestedPrice === "number" && Number.isFinite(nestedPrice)) {
-    return nestedPrice;
+  if (typeof rawPrice === "string") {
+    const parsed = Number(rawPrice);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  if (rawPrice && typeof rawPrice === "object") {
+    const nested = rawPrice as { amountMax?: number; amountMin?: number };
+    const amount = nested.amountMax ?? nested.amountMin;
+    if (typeof amount === "number" && Number.isFinite(amount)) {
+      return amount;
+    }
   }
 
   return item.price;
