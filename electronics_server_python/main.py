@@ -1524,8 +1524,14 @@ SOLUTION_BUNDLE_INPUT_SCHEMA: Dict[str, Any] = {
         },
         "pricePreference": {
             "type": "string",
-            "enum": ["low", "high"],
-            "description": "Preferenza prezzo: low o high.",
+            "enum": ["low", "medium", "high"],
+            "description": "Preferenza prezzo: low o medium o high.",
+        },
+        "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "description": "Numero massimo di suggerimenti cross-sell (1-8).",
         },
         "maxResults": {
             "type": "integer",
@@ -2194,7 +2200,7 @@ def _get_cross_sell_suggestions_from_db(
     catalog = [_map_product_to_cross_sell_item(product) for product in accessory_products]
     catalog = [item for item in catalog if item.get("price", 0) > 0 and item.get("name")]
 
-    suggestions = _get_cross_sell_suggestions(cart_items, catalog)
+    suggestions = _get_cross_sell_suggestions(cart_items, catalog, max_results)
 
     if has_screen_device:
         suggestions = [item for item in suggestions if item.get("sku")]
@@ -2966,12 +2972,14 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     suggestions = _get_cross_sell_suggestions(
                         cross_sell_input.cart_items,
                         CROSS_SELL_FALLBACK_CATALOG,
-                    )[: cross_sell_input.max_results]
+                        cross_sell_input.max_results,
+                    )
             else:
                 suggestions = _get_cross_sell_suggestions(
                     cross_sell_input.cart_items,
                     CROSS_SELL_FALLBACK_CATALOG,
-                )[: cross_sell_input.max_results]
+                    cross_sell_input.max_results,
+                )
         except Exception as e:
             error_msg = f"Error generating cross-sell suggestions: {str(e)}"
             logger.error(error_msg, exc_info=True)
@@ -3043,6 +3051,8 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             )
 
         price_preference = solution_input.price_preference.lower().strip()
+        if price_preference == "medium":
+            price_preference = "low"
         if price_preference not in ["low", "high"]:
             error_msg = "pricePreference deve essere 'low' o 'high'."
             logger.warning(error_msg)
