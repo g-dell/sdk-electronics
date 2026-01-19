@@ -42,7 +42,7 @@ function App() {
   }, [emblaApi]);
 
   return (
-    <div className="antialiased relative w-full text-black py-5 bg-white">
+    <div className="antialiased relative w-full text-black py-5 bg-[#3D4347] rounded-2xl shadow-sm">
       <div className="overflow-hidden" ref={emblaRef}>
         <div className="flex gap-4 px-4 max-sm:mx-5 items-stretch">
           {places.map((place) => (

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { AnimatePresence } from "framer-motion";
 import { useCart } from "../use-cart";
 import { AvocadoIcon, BreadIcon, EggIcon, JarIcon, TomatoIcon } from "./icons";
+import CrossSellSection from "./CrossSellSection";
 import type { CartItem } from "../types";
 import ProductDetails from "../utils/ProductDetails";
 
@@ -423,7 +424,7 @@ function App() {
 
   return (
     <div
-      className="min-h-screen w-full bg-white text-black bg-[radial-gradient(circle_at_top_left,_#fff7ed_0,_#ffffff_55%),radial-gradient(circle_at_bottom_right,_#eef2ff_0,_#ffffff_45%)]"
+      className="min-h-screen w-full bg-white text-black bg-[radial-gradient(circle_at_top_left,_#fff7ed_0,_#ffffff_55%),radial-gradient(circle_at_bottom_right,_#eef2ff_0,_#ffffff_45%)] rounded-2xl shadow-sm"
       style={{
         fontFamily: '"Trebuchet MS", "Gill Sans", "Lucida Grande", sans-serif',
       }}
@@ -542,6 +543,21 @@ function App() {
               </div>
             )}
             {!purchaseSummary ? itemCards : null}
+            {!purchaseSummary && (
+              <CrossSellSection
+                cartItems={cartItems}
+                formatCurrency={formatCurrency}
+                onAdd={(item) => {
+                  addToCart({
+                    id: item.sku,
+                    name: item.name,
+                    price: item.price,
+                    description: item.tags?.join(", ") ?? "",
+                    image: item.imageUrl ?? "",
+                  });
+                }}
+              />
+            )}
             {!purchaseSummary && (
               <>
                 <div className="rounded-2xl border border-black/10 bg-white/70 px-4 py-3 text-sm text-black/70">

@@ -187,7 +187,7 @@ function App() {
           height: displayMode === "fullscreen" ? maxHeight - 40 : 480,
         }}
         className={
-          "relative antialiased w-full min-h-[480px] overflow-hidden " +
+          "relative antialiased w-full min-h-[480px] overflow-hidden rounded-2xl shadow-sm" +
           (displayMode === "fullscreen"
             ? "rounded-none border-0"
             : "border border-black/10 dark:border-white/10 rounded-2xl sm:rounded-3xl")
