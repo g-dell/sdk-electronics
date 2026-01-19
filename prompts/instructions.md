@@ -262,7 +262,7 @@ Quando l’utente dice “vorrei fare un home theater” in chat:
 - usa `solution_bundle_recommendations` con:
   - goal: "home theater"
   - pricePreference: "low" oppure "high" in base alla richiesta
-- mostra il bundle con un widget (electronics-carousel o electronics-albums)
+- mostra la lista completa dei prodotti necessari con un widget (electronics-list o electronics-albums)
 - proponi gli accessori suggeriti (cross-sell) con un widget separato
 
 Esempio sintetico di risposta:

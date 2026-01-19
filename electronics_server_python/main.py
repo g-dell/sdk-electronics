@@ -1958,12 +1958,12 @@ def _filter_products_by_name_keywords(
     return filtered
 
 
-def _select_product_by_price(
+def _sort_products_by_price(
     products: List[Dict[str, Any]],
     preference: str,
-) -> Dict[str, Any] | None:
+) -> List[Dict[str, Any]]:
     if not products:
-        return None
+        return []
     preference = (preference or "low").lower()
     scored = []
     for product in products:
@@ -1972,19 +1972,29 @@ def _select_product_by_price(
     scored.sort(key=lambda item: item[0] if item[0] > 0 else float("inf"))
     if preference == "high":
         scored.reverse()
-    for price, product in scored:
-        if price > 0:
+    return [product for _price, product in scored]
+
+
+def _select_product_by_price(
+    products: List[Dict[str, Any]],
+    preference: str,
+) -> Dict[str, Any] | None:
+    sorted_products = _sort_products_by_price(products, preference)
+    for product in sorted_products:
+        if _extract_price_from_product(product) > 0:
             return product
-    return scored[0][1] if scored else None
+    return sorted_products[0] if sorted_products else None
 
 
-def _build_solution_bundle(
+def _build_solution_bundle_catalog(
     products: List[Dict[str, Any]],
     price_preference: str,
-) -> List[Dict[str, Any]]:
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     if not products:
-        return []
+        return [], []
     bundle_items: List[Dict[str, Any]] = []
+    representative_items: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
     selections = [
         (CROSS_SELL_TV_KEYWORDS, "tv"),
         (SOLUTION_BUNDLE_SOUNDBAR_KEYWORDS, "soundbar"),
@@ -1994,10 +2004,20 @@ def _build_solution_bundle(
     ]
     for keywords, _label in selections:
         candidates = _filter_products_by_name_keywords(products, keywords)
+        if not candidates:
+            continue
+        sorted_candidates = _sort_products_by_price(candidates, price_preference)
+        for product in sorted_candidates:
+            product_id = str(product.get("id", ""))
+            if product_id and product_id in seen_ids:
+                continue
+            if product_id:
+                seen_ids.add(product_id)
+            bundle_items.append(product)
         chosen = _select_product_by_price(candidates, price_preference)
         if chosen:
-            bundle_items.append(chosen)
-    return bundle_items
+            representative_items.append(chosen)
+    return bundle_items, representative_items
 
 
 def _resolve_cart_products(
@@ -3055,14 +3075,17 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     )
                 )
 
-            bundle_products = _build_solution_bundle(products, price_preference)
+            bundle_products, representative_products = _build_solution_bundle_catalog(
+                products,
+                price_preference,
+            )
             bundle_items = [
                 _map_product_to_cross_sell_item(product) for product in bundle_products
             ]
             cart_items = [
-                {"id": item.get("id", ""), "name": item.get("name", "")}
-                for item in bundle_items
-                if item.get("id") and item.get("name")
+                {"id": product.get("id", ""), "name": product.get("name", "")}
+                for product in representative_products
+                if product.get("id") and product.get("name")
             ]
 
             cross_sell = []
