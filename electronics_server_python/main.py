@@ -2621,6 +2621,7 @@ async def _list_tools() -> List[types.Tool]:
                 "prodotti core dal catalogo e aggiungendo suggerimenti cross-sell."
             ),
             inputSchema=deepcopy(SOLUTION_BUNDLE_INPUT_SCHEMA),
+            _meta=_tool_meta(WIDGETS_BY_ID["electronics-list"]),
             annotations={
                 "destructiveHint": False,
                 "openWorldHint": False,
@@ -3092,6 +3093,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             bundle_items = [
                 _map_product_to_cross_sell_item(product) for product in bundle_products
             ]
+            places = transform_products_to_places(bundle_products)
             cart_items = [
                 {"id": product.get("id", ""), "name": product.get("name", "")}
                 for product in representative_products
@@ -3139,7 +3141,9 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     "pricePreference": price_preference,
                     "bundleItems": bundle_items,
                     "crossSell": cross_sell,
+                    "places": places,
                 },
+                _meta=_tool_invocation_meta(WIDGETS_BY_ID["electronics-list"]),
             )
         )
 
