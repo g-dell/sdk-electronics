@@ -1699,6 +1699,36 @@ SOLUTION_BUNDLE_GOAL_KEYWORDS = [
 ]
 SOLUTION_BUNDLE_SOUNDBAR_KEYWORDS = ["soundbar"]
 SOLUTION_BUNDLE_SUBWOOFER_KEYWORDS = ["subwoofer"]
+BUNDLE_ACCESSORY_EXCLUDE_KEYWORDS = [
+    "accessor",
+    "supporto",
+    "staff",
+    "mount",
+    "bracket",
+    "stand",
+    "base",
+    "kit",
+    "panno",
+    "microfibra",
+    "clean",
+    "pulizia",
+    "cavo",
+    "hdmi",
+    "telecomand",
+    "remote",
+    "led",
+    "strip",
+    "lighting",
+    "backlight",
+    "wall",
+]
+BUNDLE_ACCESSORY_EXCLUDE_KEYWORDS = list(
+    {
+        *BUNDLE_ACCESSORY_EXCLUDE_KEYWORDS,
+        *CROSS_SELL_MOUNT_KEYWORDS,
+        *CROSS_SELL_LED_KEYWORDS,
+    }
+)
 
 CROSS_SELL_CLEANING_TAG = "screen-cleaning"
 CROSS_SELL_POPULAR_TAG = "popular"
@@ -1964,6 +1994,35 @@ def _filter_products_by_name_keywords(
     return filtered
 
 
+def _is_accessory_product(
+    product: Dict[str, Any],
+    accessory_keywords: List[str],
+) -> bool:
+    if not accessory_keywords:
+        return False
+    normalized_name = _normalize_text(str(product.get("name", "")))
+    normalized_categories = _normalize_text(" ".join(_extract_product_categories(product)))
+    combined = f"{normalized_name} {normalized_categories}".strip()
+    return any(keyword in combined for keyword in accessory_keywords)
+
+
+def _filter_products_for_bundle(
+    products: List[Dict[str, Any]],
+    include_keywords: List[str],
+    accessory_exclusions: List[str] | None = None,
+) -> List[Dict[str, Any]]:
+    candidates = _filter_products_by_name_keywords(products, include_keywords)
+    if not candidates or not accessory_exclusions:
+        return candidates
+    exclusions = [kw.lower().strip() for kw in accessory_exclusions if kw]
+    filtered = [
+        product
+        for product in candidates
+        if not _is_accessory_product(product, exclusions)
+    ]
+    return filtered or candidates
+
+
 def _sort_products_by_price(
     products: List[Dict[str, Any]],
     preference: str,
@@ -2001,14 +2060,18 @@ def _build_solution_bundle_catalog(
     bundle_items: List[Dict[str, Any]] = []
     seen_ids: set[str] = set()
     selections = [
-        (CROSS_SELL_TV_KEYWORDS, "tv"),
-        (SOLUTION_BUNDLE_SOUNDBAR_KEYWORDS, "soundbar"),
-        (SOLUTION_BUNDLE_SUBWOOFER_KEYWORDS, "subwoofer"),
-        (CROSS_SELL_LED_KEYWORDS, "led"),
-        (CROSS_SELL_MOUNT_KEYWORDS, "mount"),
+        (CROSS_SELL_TV_KEYWORDS, "tv", True),
+        (SOLUTION_BUNDLE_SOUNDBAR_KEYWORDS, "soundbar", True),
+        (SOLUTION_BUNDLE_SUBWOOFER_KEYWORDS, "subwoofer", False),
+        (CROSS_SELL_LED_KEYWORDS, "led", False),
+        (CROSS_SELL_MOUNT_KEYWORDS, "mount", False),
     ]
-    for keywords, _label in selections:
-        candidates = _filter_products_by_name_keywords(products, keywords)
+    for keywords, _label, exclude_accessories in selections:
+        candidates = _filter_products_for_bundle(
+            products,
+            keywords,
+            BUNDLE_ACCESSORY_EXCLUDE_KEYWORDS if exclude_accessories else None,
+        )
         chosen = _select_product_by_price(candidates, price_preference)
         if not chosen:
             continue
