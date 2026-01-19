@@ -1483,6 +1483,38 @@ CONFIRM_PAYMENT_INTENT_INPUT_SCHEMA: Dict[str, Any] = {
     "additionalProperties": False,
 }
 
+CROSS_SELL_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "cartItems": {
+            "type": "array",
+            "description": "Articoli presenti nel carrello per calcolare i suggerimenti.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "shortDescription": {"type": "string"},
+                    "detailSummary": {"type": "string"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "category": {"type": "string"},
+                },
+                "required": ["id", "name"],
+                "additionalProperties": False,
+            },
+        },
+        "maxResults": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "description": "Numero massimo di suggerimenti da restituire (1-8).",
+        },
+    },
+    "required": ["cartItems"],
+    "additionalProperties": False,
+}
+
 
 class CheckoutItemInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -1579,6 +1611,521 @@ class CreatePaymentIntentInput(BaseModel):
 class ConfirmPaymentIntentInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     payment_intent_id: str = Field(min_length=1)
+
+
+class CrossSellCartItemInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    description: str | None = None
+    short_description: str | None = Field(default=None, alias="shortDescription")
+    detail_summary: str | None = Field(default=None, alias="detailSummary")
+    tags: List[str] | None = None
+    category: str | None = None
+
+
+class CrossSellRequestInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    cart_items: List[CrossSellCartItemInput] = Field(alias="cartItems")
+    max_results: int = Field(default=8, ge=1, le=8, alias="maxResults")
+
+
+CROSS_SELL_PC_KEYWORDS = [
+    "pc",
+    "laptop",
+    "notebook",
+    "desktop",
+    "computer",
+    "ultrabook",
+    "macbook",
+    "gaming",
+]
+CROSS_SELL_TV_KEYWORDS = ["tv", "televisore", "television", "smart tv", "oled", "qled"]
+
+CROSS_SELL_CLEANING_TAG = "screen-cleaning"
+CROSS_SELL_POPULAR_TAG = "popular"
+CROSS_SELL_RECOMMENDED_TAG = "recommended"
+
+CROSS_SELL_FALLBACK_CATALOG: List[Dict[str, Any]] = [
+    {
+        "id": "cs-clean-cloth-01",
+        "sku": "CS-CLEAN-CLOTH-01",
+        "name": "Panno in microfibra per schermi",
+        "price": 9.9,
+        "imageUrl": "",
+        "tags": [CROSS_SELL_CLEANING_TAG, CROSS_SELL_POPULAR_TAG],
+        "compatibleWith": ["pc", "tv"],
+        "priority": 95,
+    },
+    {
+        "id": "cs-clean-spray-01",
+        "sku": "CS-CLEAN-SPRAY-01",
+        "name": "Spray delicato per pulizia display",
+        "price": 12.9,
+        "imageUrl": "",
+        "tags": [CROSS_SELL_CLEANING_TAG, CROSS_SELL_RECOMMENDED_TAG],
+        "compatibleWith": ["pc", "tv"],
+        "priority": 90,
+    },
+    {
+        "id": "cs-usb-c-01",
+        "sku": "CS-USB-C-01",
+        "name": "Cavo USB-C 100W intrecciato",
+        "price": 19.9,
+        "imageUrl": "",
+        "tags": ["usb-c", CROSS_SELL_RECOMMENDED_TAG],
+        "compatibleWith": ["pc"],
+        "priority": 80,
+    },
+    {
+        "id": "cs-charger-01",
+        "sku": "CS-CHARGER-01",
+        "name": "Caricatore USB-C 65W",
+        "price": 34.9,
+        "imageUrl": "",
+        "tags": ["charger", CROSS_SELL_POPULAR_TAG],
+        "compatibleWith": ["pc"],
+        "priority": 78,
+    },
+    {
+        "id": "cs-hdmi-01",
+        "sku": "CS-HDMI-01",
+        "name": "Cavo HDMI 2.1 ad alta velocita",
+        "price": 24.9,
+        "imageUrl": "",
+        "tags": ["hdmi", CROSS_SELL_POPULAR_TAG],
+        "compatibleWith": ["tv"],
+        "priority": 82,
+    },
+    {
+        "id": "cs-remote-01",
+        "sku": "CS-REMOTE-01",
+        "name": "Telecomando universale smart",
+        "price": 29.9,
+        "imageUrl": "",
+        "tags": ["remote", CROSS_SELL_RECOMMENDED_TAG],
+        "compatibleWith": ["tv"],
+        "priority": 75,
+    },
+    {
+        "id": "cs-mount-01",
+        "sku": "CS-MOUNT-01",
+        "name": "Staffa TV slim orientabile",
+        "price": 49.9,
+        "imageUrl": "",
+        "tags": ["tv-mount", CROSS_SELL_RECOMMENDED_TAG],
+        "compatibleWith": ["tv"],
+        "priority": 72,
+    },
+    {
+        "id": "cs-ups-01",
+        "sku": "CS-UPS-01",
+        "name": "Ciabatta con protezione UPS",
+        "price": 39.9,
+        "imageUrl": "",
+        "tags": ["power", CROSS_SELL_POPULAR_TAG],
+        "compatibleWith": ["pc", "tv"],
+        "priority": 70,
+    },
+    {
+        "id": "cs-stand-01",
+        "sku": "CS-STAND-01",
+        "name": "Supporto da scrivania regolabile",
+        "price": 44.9,
+        "imageUrl": "",
+        "tags": ["stand", CROSS_SELL_RECOMMENDED_TAG],
+        "compatibleWith": ["pc"],
+        "priority": 68,
+    },
+]
+
+
+def _normalize_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+def _collect_cart_text(cart_items: List[CrossSellCartItemInput]) -> str:
+    chunks = []
+    for item in cart_items:
+        chunks.extend(
+            [
+                item.name,
+                item.description,
+                item.short_description,
+                item.detail_summary,
+                " ".join(item.tags or []),
+            ]
+        )
+    return " ".join([chunk for chunk in chunks if chunk])
+
+
+def _get_cart_category_intent(
+    cart_items: List[CrossSellCartItemInput],
+) -> tuple[List[str], bool]:
+    if not cart_items:
+        return [], False
+
+    normalized_text = _normalize_text(_collect_cart_text(cart_items))
+    tokens = {token for token in normalized_text.split() if token}
+
+    explicit_categories = []
+    for item in cart_items:
+        if not item.category:
+            continue
+        normalized_category = _normalize_text(item.category)
+        if any(keyword in normalized_category for keyword in ["pc", "laptop", "desktop"]):
+            explicit_categories.append("pc")
+        if "tv" in normalized_category or "televis" in normalized_category:
+            explicit_categories.append("tv")
+
+    has_pc = (
+        "pc" in explicit_categories
+        or any(keyword in tokens or keyword in normalized_text for keyword in CROSS_SELL_PC_KEYWORDS)
+    )
+    has_tv = (
+        "tv" in explicit_categories
+        or any(keyword in tokens or keyword in normalized_text for keyword in CROSS_SELL_TV_KEYWORDS)
+    )
+
+    categories: List[str] = []
+    if has_pc:
+        categories.append("pc")
+    if has_tv:
+        categories.append("tv")
+
+    return categories, has_pc or has_tv
+
+
+def _get_cart_identifiers(cart_items: List[CrossSellCartItemInput]) -> tuple[set[str], set[str]]:
+    ids = set()
+    names = set()
+    for item in cart_items:
+        if item.id:
+            ids.add(_normalize_text(item.id))
+        if item.name:
+            names.add(_normalize_text(item.name))
+    return ids, names
+
+
+def _has_accessory_keyword(cart_items: List[CrossSellCartItemInput], keywords: List[str]) -> bool:
+    normalized_text = _normalize_text(_collect_cart_text(cart_items))
+    return any(keyword in normalized_text for keyword in keywords)
+
+
+def _sort_by_priority(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return sorted(items, key=lambda item: item.get("priority", 0), reverse=True)
+
+
+def _dedupe_by_sku(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    seen = set()
+    deduped = []
+    for item in items:
+        sku = item.get("sku")
+        if not sku or sku in seen:
+            continue
+        seen.add(sku)
+        deduped.append(item)
+    return deduped
+
+
+def _extract_product_categories(product: Dict[str, Any]) -> List[str]:
+    categories_raw: List[str] = []
+    primary = product.get("primaryCategories")
+    if isinstance(primary, list):
+        categories_raw.extend([str(cat).strip() for cat in primary if cat])
+    elif isinstance(primary, str):
+        categories_raw.extend([cat.strip() for cat in primary.split(",") if cat.strip()])
+
+    categories = product.get("categories")
+    if isinstance(categories, list):
+        categories_raw.extend([str(cat).strip() for cat in categories if cat])
+    elif isinstance(categories, str):
+        categories_raw.extend([cat.strip() for cat in categories.split(",") if cat.strip()])
+
+    return categories_raw
+
+
+def _product_has_category_keywords(product: Dict[str, Any], keywords: List[str]) -> bool:
+    normalized_categories = _normalize_text(" ".join(_extract_product_categories(product)))
+    return any(keyword in normalized_categories for keyword in keywords)
+
+
+def _extract_price_from_product(product: Dict[str, Any]) -> float:
+    prices_value = product.get("prices")
+    if isinstance(prices_value, (int, float)):
+        return float(prices_value)
+    if isinstance(prices_value, str):
+        try:
+            return float(prices_value)
+        except ValueError:
+            return 0.0
+    if isinstance(prices_value, dict):
+        candidate = prices_value.get("amountMax", 0) or prices_value.get("amountMin", 0)
+        try:
+            return float(candidate)
+        except (ValueError, TypeError):
+            return 0.0
+    return 0.0
+
+
+def _extract_image_url(product: Dict[str, Any]) -> str:
+    images = product.get("imageURLs")
+    if isinstance(images, list) and images:
+        return str(images[0])
+    if isinstance(images, str):
+        return images
+    return ""
+
+
+def _resolve_cart_products(
+    cart_items: List[CrossSellCartItemInput],
+    products: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    if not cart_items or not products:
+        return []
+
+    lookup: Dict[str, Dict[str, Any]] = {}
+    for product in products:
+        product_id = product.get("id")
+        product_name = product.get("name")
+        if isinstance(product_id, str) and product_id:
+            lookup[_normalize_text(product_id)] = product
+        if isinstance(product_name, str) and product_name:
+            lookup[_normalize_text(product_name)] = product
+
+    resolved = []
+    for item in cart_items:
+        key_candidates = [_normalize_text(item.id), _normalize_text(item.name)]
+        for key in key_candidates:
+            if key in lookup:
+                resolved.append(lookup[key])
+                break
+    return resolved
+
+
+def _detect_cart_intent_from_products(
+    cart_products: List[Dict[str, Any]],
+) -> tuple[List[str], bool]:
+    if not cart_products:
+        return [], False
+
+    normalized_categories = _normalize_text(
+        " ".join(
+            [" ".join(_extract_product_categories(product)) for product in cart_products]
+        )
+    )
+
+    has_tv = any(keyword in normalized_categories for keyword in ["tv", "televis"])
+    has_pc = any(
+        keyword in normalized_categories
+        for keyword in ["laptop", "computer", "desktop", "notebook", "pc"]
+    )
+
+    categories: List[str] = []
+    if has_pc:
+        categories.append("pc")
+    if has_tv:
+        categories.append("tv")
+
+    return categories, has_pc or has_tv
+
+
+def _map_product_to_cross_sell_item(product: Dict[str, Any]) -> Dict[str, Any]:
+    product_id = product.get("id")
+    sku = str(product_id) if product_id is not None else ""
+    name = product.get("name", "")
+    price = _extract_price_from_product(product)
+    primary_categories = _extract_product_categories(product)
+    normalized_categories = _normalize_text(" ".join(primary_categories))
+
+    tags: List[str] = []
+    if "panno" in normalized_categories or "clean" in normalized_categories:
+        tags.append(CROSS_SELL_CLEANING_TAG)
+    if "cavi" in normalized_categories or "hdmi" in normalized_categories:
+        tags.append(CROSS_SELL_POPULAR_TAG)
+    if "telecomand" in normalized_categories or "caric" in normalized_categories:
+        tags.append(CROSS_SELL_RECOMMENDED_TAG)
+
+    compatible_with: List[str] = []
+    if "tv" in normalized_categories or "televis" in normalized_categories:
+        compatible_with.append("tv")
+    if any(token in normalized_categories for token in ["computer", "laptop", "desktop", "pc"]):
+        compatible_with.append("pc")
+
+    priority = 60
+    if CROSS_SELL_CLEANING_TAG in tags:
+        priority = 90
+    elif "cavi" in normalized_categories:
+        priority = 82
+    elif "telecomand" in normalized_categories:
+        priority = 78
+    elif "caric" in normalized_categories:
+        priority = 76
+
+    return {
+        "id": sku,
+        "sku": sku,
+        "name": name,
+        "price": price,
+        "imageUrl": _extract_image_url(product),
+        "tags": tags,
+        "compatibleWith": compatible_with,
+        "priority": priority,
+        "primaryCategories": primary_categories,
+    }
+
+
+def _get_cross_sell_suggestions_from_db(
+    cart_items: List[CrossSellCartItemInput],
+    products: List[Dict[str, Any]],
+    max_results: int,
+) -> List[Dict[str, Any]]:
+    if not cart_items or not products:
+        return []
+
+    cart_products = _resolve_cart_products(cart_items, products)
+    categories, has_screen_device = _detect_cart_intent_from_products(cart_products)
+
+    tv_keywords = ["cavi per tv", "telecomandi per tv", "panno per tv", "staff", "support"]
+    pc_keywords = [
+        "cavi per computer",
+        "panno per computer",
+        "caric",
+        "alimentatore",
+        "adattatore",
+        "hub",
+        "accessori",
+    ]
+
+    accessory_products: List[Dict[str, Any]] = []
+    for product in products:
+        normalized_categories = _normalize_text(" ".join(_extract_product_categories(product)))
+        if "tv" in categories and any(keyword in normalized_categories for keyword in tv_keywords):
+            accessory_products.append(product)
+        elif "pc" in categories and any(keyword in normalized_categories for keyword in pc_keywords):
+            accessory_products.append(product)
+
+    catalog = [_map_product_to_cross_sell_item(product) for product in accessory_products]
+    catalog = [item for item in catalog if item.get("price", 0) > 0 and item.get("name")]
+
+    suggestions = _get_cross_sell_suggestions(cart_items, catalog)
+
+    if has_screen_device:
+        suggestions = [item for item in suggestions if item.get("sku")]
+
+    return suggestions[:max_results]
+
+
+def _get_cross_sell_suggestions(
+    cart_items: List[CrossSellCartItemInput],
+    catalog: List[Dict[str, Any]],
+    max_results: int,
+) -> List[Dict[str, Any]]:
+    if not cart_items or not catalog:
+        return []
+
+    categories, has_screen_device = _get_cart_category_intent(cart_items)
+    cart_ids, cart_names = _get_cart_identifiers(cart_items)
+    normalized_cart_text = _normalize_text(_collect_cart_text(cart_items))
+
+    eligible = _dedupe_by_sku(
+        [
+            item
+            for item in catalog
+            if _normalize_text(item.get("sku", "")) not in cart_ids
+            and _normalize_text(item.get("id", "")) not in cart_ids
+            and _normalize_text(item.get("name", "")) not in cart_names
+        ]
+    )
+
+    suggestions: List[Dict[str, Any]] = []
+    seen_skus = set()
+
+    def push_suggestion(item: Dict[str, Any]) -> None:
+        sku = item.get("sku")
+        if not sku or sku in seen_skus:
+            return
+        seen_skus.add(sku)
+        suggestions.append(item)
+
+    if has_screen_device and categories:
+        cleaning_candidates = _sort_by_priority(
+            [
+                item
+                for item in eligible
+                if CROSS_SELL_CLEANING_TAG in (item.get("tags") or [])
+                and any(category in categories for category in item.get("compatibleWith", []))
+            ]
+        )
+        for item in cleaning_candidates[:2]:
+            push_suggestion(item)
+
+    if "pc" in categories:
+        needs_usb_c = not _has_accessory_keyword(cart_items, ["usb-c", "usb c"])
+        needs_charger = not _has_accessory_keyword(cart_items, ["charger", "caricatore"])
+        pc_candidates = [item for item in eligible if "pc" in item.get("compatibleWith", [])]
+
+        if needs_usb_c:
+            for item in _sort_by_priority(
+                [item for item in pc_candidates if "usb-c" in (item.get("tags") or [])]
+            )[:1]:
+                push_suggestion(item)
+
+        if needs_charger:
+            for item in _sort_by_priority(
+                [item for item in pc_candidates if "charger" in (item.get("tags") or [])]
+            )[:1]:
+                push_suggestion(item)
+
+    if "tv" in categories:
+        needs_hdmi = "hdmi" not in normalized_cart_text
+        tv_candidates = [item for item in eligible if "tv" in item.get("compatibleWith", [])]
+
+        if needs_hdmi:
+            for item in _sort_by_priority(
+                [item for item in tv_candidates if "hdmi" in (item.get("tags") or [])]
+            )[:1]:
+                push_suggestion(item)
+
+        for item in _sort_by_priority(
+            [item for item in tv_candidates if "remote" in (item.get("tags") or [])]
+        )[:1]:
+            push_suggestion(item)
+
+        for item in _sort_by_priority(
+            [
+                item
+                for item in tv_candidates
+                if any(tag in ["tv-mount", "stand"] for tag in (item.get("tags") or []))
+            ]
+        )[:1]:
+            push_suggestion(item)
+
+    category_set = set(categories)
+    scored: List[tuple[Dict[str, Any], int]] = []
+    for item in eligible:
+        sku = item.get("sku")
+        if not sku or sku in seen_skus:
+            continue
+        if categories and not any(cat in category_set for cat in item.get("compatibleWith", [])):
+            continue
+
+        score = int(item.get("priority", 0))
+        if has_screen_device and CROSS_SELL_CLEANING_TAG in (item.get("tags") or []):
+            score += 15
+        if "pc" in categories and "pc" in item.get("compatibleWith", []):
+            score += 10
+        if "tv" in categories and "tv" in item.get("compatibleWith", []):
+            score += 10
+        if CROSS_SELL_POPULAR_TAG in (item.get("tags") or []):
+            score += 4
+        scored.append((item, score))
+
+    scored.sort(key=lambda entry: entry[1], reverse=True)
+    for item, _score in scored:
+        push_suggestion(item)
+
+    return suggestions[:max_results]
 
 
 ZERO_DECIMAL_CURRENCIES = {
@@ -1809,6 +2356,24 @@ async def _list_tools() -> List[types.Tool]:
                 "Restituisce il testo completo delle istruzioni dal file prompts/instructions.md."
             ),
             inputSchema=deepcopy(EMPTY_TOOL_INPUT_SCHEMA),
+            annotations={
+                "destructiveHint": False,
+                "openWorldHint": False,
+                "readOnlyHint": True,
+            },
+        )
+    )
+
+    tools.append(
+        types.Tool(
+            name="cross_sell_recommendations",
+            title="Cross-sell Recommendations",
+            description=(
+                "Genera suggerimenti di cross-selling per il carrello in base alle categorie "
+                "dei prodotti presenti e alle regole business predefinite. Restituisce una lista "
+                "di accessori consigliati con SKU, nome, prezzo e tags."
+            ),
+            inputSchema=deepcopy(CROSS_SELL_INPUT_SCHEMA),
             annotations={
                 "destructiveHint": False,
                 "openWorldHint": False,
@@ -2130,6 +2695,76 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 )
             )
     
+    if tool_name == "cross_sell_recommendations":
+        try:
+            cross_sell_input = CrossSellRequestInput.model_validate(arguments or {})
+        except ValidationError as e:
+            error_msg = f"Invalid input for {tool_name}: {str(e)}"
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        try:
+            products = await get_products_from_motherduck()
+            if products:
+                suggestions = _get_cross_sell_suggestions_from_db(
+                    cross_sell_input.cart_items,
+                    products,
+                    cross_sell_input.max_results,
+                )
+                if not suggestions:
+                    suggestions = _get_cross_sell_suggestions(
+                        cross_sell_input.cart_items,
+                        CROSS_SELL_FALLBACK_CATALOG,
+                    )[: cross_sell_input.max_results]
+            else:
+                suggestions = _get_cross_sell_suggestions(
+                    cross_sell_input.cart_items,
+                    CROSS_SELL_FALLBACK_CATALOG,
+                )[: cross_sell_input.max_results]
+        except Exception as e:
+            error_msg = f"Error generating cross-sell suggestions: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        result = types.ServerResult(
+            types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text="Cross-sell suggestions generated.",
+                    )
+                ],
+                structuredContent={"suggestions": suggestions},
+            )
+        )
+
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(
+            f"Tool execution completed: tool={tool_name}, success=True, duration={duration:.3f}s"
+        )
+
+        return result
+
     if tool_name == "create_checkout_session":
         try:
             checkout_input = CheckoutSessionInput.model_validate(arguments or {})
