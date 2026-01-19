@@ -150,6 +150,8 @@ In caso di conflitto:
 - electronics-map → negozi fisici (richiedi CAP o città)
 - solution_bundle_recommendations → crea un bundle soluzione in chat (es. home theater) usando il catalogo
 - cross_sell_recommendations → suggerimenti accessori per il carrello
+Note UI:
+- Nel widget **electronics-list** è presente il pulsante “Compra tutto” che aggiunge l’intera lista al carrello
 
 ---
 
@@ -262,7 +264,7 @@ Quando l’utente dice “vorrei fare un home theater” in chat:
 - usa `solution_bundle_recommendations` con:
   - goal: "home theater"
   - pricePreference: "low" oppure "high" in base alla richiesta
-- mostra la lista completa dei prodotti necessari con un widget (electronics-list o electronics-albums)
+- rispondi sempre con una lista widget (electronics-list) con una sola opzione per categoria (TV, soundbar, subwoofer, LED, supporto)
 - proponi gli accessori suggeriti (cross-sell) con un widget separato
 
 Esempio sintetico di risposta:

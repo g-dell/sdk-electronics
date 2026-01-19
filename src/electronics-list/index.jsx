@@ -25,6 +25,23 @@ function App() {
     });
   };
 
+  const handleAddAllToCart = () => {
+    places.forEach((place) => {
+      if (isInCart(place.id)) {
+        return;
+      }
+      addToCart({
+        id: place.id,
+        name: place.name,
+        price: place.price,
+        description: place.description,
+        thumbnail: place.thumbnail,
+      });
+    });
+  };
+
+  const allInCart = places.length > 0 && places.every((place) => isInCart(place.id));
+
   return (
     <div className="antialiased w-full text-black px-4 pb-2 border border-black/10 rounded-2xl sm:rounded-3xl overflow-hidden bg-white rounded-2xl shadow-sm">
       <div className="max-w-full">
@@ -45,8 +62,14 @@ function App() {
             </div>
           </div>
           <div className="flex-auto hidden sm:flex justify-end pr-2">
-            <Button color="primary" variant="solid" size="md">
-              Save List
+            <Button
+              color="primary"
+              variant="solid"
+              size="md"
+              onClick={handleAddAllToCart}
+              disabled={places.length === 0 || allInCart}
+            >
+              Compra tutto
             </Button>
           </div>
         </div>
@@ -96,6 +119,9 @@ function App() {
                               : place.rating}
                           </span>
                         </div>
+                        {place.price && (
+                          <div className="whitespace-nowrap">{place.price}</div>
+                        )}
                         <div className="whitespace-nowrap sm:hidden">
                           {place.city || "–"}
                         </div>
@@ -133,8 +159,15 @@ function App() {
           )}
         </div>
         <div className="sm:hidden px-0 pt-2 pb-2">
-          <Button color="primary" variant="solid" size="md" block>
-            Save List
+          <Button
+            color="primary"
+            variant="solid"
+            size="md"
+            block
+            onClick={handleAddAllToCart}
+            disabled={places.length === 0 || allInCart}
+          >
+            Compra tutto
           </Button>
         </div>
       </div>

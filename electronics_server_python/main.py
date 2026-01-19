@@ -1995,11 +1995,10 @@ def _select_product_by_price(
 def _build_solution_bundle_catalog(
     products: List[Dict[str, Any]],
     price_preference: str,
-) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+) -> List[Dict[str, Any]]:
     if not products:
-        return [], []
+        return []
     bundle_items: List[Dict[str, Any]] = []
-    representative_items: List[Dict[str, Any]] = []
     seen_ids: set[str] = set()
     selections = [
         (CROSS_SELL_TV_KEYWORDS, "tv"),
@@ -2010,20 +2009,16 @@ def _build_solution_bundle_catalog(
     ]
     for keywords, _label in selections:
         candidates = _filter_products_by_name_keywords(products, keywords)
-        if not candidates:
-            continue
-        sorted_candidates = _sort_products_by_price(candidates, price_preference)
-        for product in sorted_candidates:
-            product_id = str(product.get("id", ""))
-            if product_id and product_id in seen_ids:
-                continue
-            if product_id:
-                seen_ids.add(product_id)
-            bundle_items.append(product)
         chosen = _select_product_by_price(candidates, price_preference)
-        if chosen:
-            representative_items.append(chosen)
-    return bundle_items, representative_items
+        if not chosen:
+            continue
+        product_id = str(chosen.get("id", ""))
+        if product_id and product_id in seen_ids:
+            continue
+        if product_id:
+            seen_ids.add(product_id)
+        bundle_items.append(chosen)
+    return bundle_items
 
 
 def _resolve_cart_products(
@@ -3086,7 +3081,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     )
                 )
 
-            bundle_products, representative_products = _build_solution_bundle_catalog(
+            bundle_products = _build_solution_bundle_catalog(
                 products,
                 price_preference,
             )
@@ -3096,7 +3091,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             places = transform_products_to_places(bundle_products)
             cart_items = [
                 {"id": product.get("id", ""), "name": product.get("name", "")}
-                for product in representative_products
+                for product in bundle_products
                 if product.get("id") and product.get("name")
             ]
 
