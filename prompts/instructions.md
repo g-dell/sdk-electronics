@@ -147,6 +147,7 @@ In caso di conflitto:
 
 ### Widget e acquisto
 - electronics-carousel → max 6 prodotti, **una sola categoria**
+- Se l’utente chiede un bundle con categorie diverse, usa sempre **electronics-list** (non il carosello)
 - electronics-list → lista compatta
 - electronics-albums → galleria per categoria/tema
 - electronics-shop → negozio completo (max 24 prodotti)

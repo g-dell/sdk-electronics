@@ -2085,7 +2085,7 @@ def _build_solution_bundle_catalog(
         (CROSS_SELL_TV_KEYWORDS, "tv", True, 2),
         (SOLUTION_BUNDLE_SOUNDBAR_KEYWORDS, "soundbar", True, 2),
         (SOLUTION_BUNDLE_SUBWOOFER_KEYWORDS, "subwoofer", True, 1),
-        (CROSS_SELL_LED_KEYWORDS, "led", False, 1),
+        (CROSS_SELL_LED_KEYWORDS, "led", True, 1),
     ]
     for keywords, _label, exclude_accessories, limit in selections:
         candidates = _filter_products_for_bundle(
