@@ -3468,25 +3468,21 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
 
         cart = CheckoutCart(items=checkout_input.items, totals=totals)
 
+        metadata_payload = {
+            "purpose": "acp_demo",
+            "items_count": str(len(checkout_input.items)),
+            "currency": currency,
+            "total_minor": str(totals.grand_total_minor),
+        }
+        logger.info(f"Checkout metadata (stripe): {metadata_payload}")
+
         try:
             pi = create_payment_intent(
                 amount_minor=totals.grand_total_minor,
                 currency=currency,
                 buyer_email=checkout_input.buyer_email,
                 shared_payment_token=checkout_input.shared_payment_token,
-                metadata={
-                    "purpose": "acp_demo",
-                    "items": json.dumps(
-                        [
-                            {
-                                "name": item.name,
-                                "quantity": item.quantity,
-                                "unit_amount_major": item.unit_amount_major,
-                            }
-                            for item in checkout_input.items
-                        ]
-                    ),
-                },
+                metadata=metadata_payload,
             )
         except Exception as e:
             error_msg = f"Error creating payment intent: {str(e)}"
