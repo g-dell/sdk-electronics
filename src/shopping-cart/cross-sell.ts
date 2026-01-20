@@ -29,6 +29,48 @@ const PC_KEYWORDS = [
   "gaming",
 ];
 const TV_KEYWORDS = ["tv", "televisore", "television", "smart tv", "oled", "qled"];
+const ACCESSORY_KEYWORDS = [
+  "cavo",
+  "usb",
+  "hdmi",
+  "caricatore",
+  "charger",
+  "alimentatore",
+  "adattatore",
+  "adapter",
+  "dock",
+  "hub",
+  "mouse",
+  "tastiera",
+  "keyboard",
+  "trackpad",
+  "cuffie",
+  "headset",
+  "speaker",
+  "casse",
+  "custodia",
+  "cover",
+  "zaino",
+  "borsa",
+  "supporto",
+  "stand",
+  "staffa",
+  "mount",
+  "telecomando",
+  "remote",
+  "panno",
+  "spray",
+  "pulizia",
+  "ssd",
+  "storage",
+  "memoria",
+  "ram",
+  "battery",
+  "batteria",
+  "power",
+  "ups",
+  "ciabatta",
+];
 
 const CLEANING_TAG = "screen-cleaning";
 const POPULAR_TAG = "popular";
@@ -150,6 +192,12 @@ function getCartText(cartItems: CartItem[]) {
     .join(" ");
 }
 
+function getItemText(item: CrossSellItem) {
+  return [item.name, item.sku, item.id, ...(item.tags ?? [])]
+    .filter(Boolean)
+    .join(" ");
+}
+
 export function getCartCategoryIntent(cartItems: CartItem[]): CartCategoryIntent {
   if (!cartItems.length) {
     return { categories: [], hasScreenDevice: false };
@@ -172,6 +220,53 @@ export function getCartCategoryIntent(cartItems: CartItem[]): CartCategoryIntent
   }
 
   return { categories, hasScreenDevice: hasPc || hasTv };
+}
+
+function inferItemCategories(item: CrossSellItem): CrossSellCategory[] {
+  if (item.compatibleWith.length > 0) {
+    return [...new Set(item.compatibleWith)];
+  }
+  const normalized = normalizeText(getItemText(item));
+  const categories: CrossSellCategory[] = [];
+  if (PC_KEYWORDS.some((keyword) => normalized.includes(keyword))) {
+    categories.push("pc");
+  }
+  if (TV_KEYWORDS.some((keyword) => normalized.includes(keyword))) {
+    categories.push("tv");
+  }
+  return categories;
+}
+
+function isAccessoryItem(item: CrossSellItem) {
+  const normalized = normalizeText(getItemText(item));
+  return ACCESSORY_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
+
+function isPrimaryDeviceItem(item: CrossSellItem) {
+  const normalized = normalizeText(getItemText(item));
+  const mentionsDevice =
+    PC_KEYWORDS.some((keyword) => normalized.includes(keyword)) ||
+    TV_KEYWORDS.some((keyword) => normalized.includes(keyword));
+  return mentionsDevice && !isAccessoryItem(item);
+}
+
+function filterSuggestionsForCart(cartItems: CartItem[], items: CrossSellItem[]) {
+  const { categories } = getCartCategoryIntent(cartItems);
+  if (categories.length === 0) {
+    return items.filter((item) => !isPrimaryDeviceItem(item));
+  }
+
+  const categorySet = new Set(categories);
+  return items.filter((item) => {
+    if (isPrimaryDeviceItem(item)) {
+      return false;
+    }
+    const itemCategories = inferItemCategories(item);
+    if (itemCategories.length === 0) {
+      return isAccessoryItem(item);
+    }
+    return itemCategories.some((category) => categorySet.has(category));
+  });
 }
 
 function getCartIdentifiers(cartItems: CartItem[]) {
@@ -330,6 +425,24 @@ export function getCrossSellSuggestions(
   scored.forEach(pushSuggestion);
 
   return suggestions.slice(0, 8);
+}
+
+export function mergeCrossSellSuggestions(
+  cartItems: CartItem[],
+  toolSuggestions: CrossSellItem[] | null,
+  catalog: CrossSellItem[]
+): CrossSellItem[] {
+  const fallback = getCrossSellSuggestions(cartItems, catalog);
+  if (!toolSuggestions || toolSuggestions.length === 0) {
+    return fallback;
+  }
+
+  const filteredTool = filterSuggestionsForCart(cartItems, toolSuggestions);
+  if (filteredTool.length === 0) {
+    return fallback;
+  }
+
+  return dedupeBySku([...filteredTool, ...fallback]).slice(0, 8);
 }
 
 export function getCrossSellTagLabel(tags?: string[]) {

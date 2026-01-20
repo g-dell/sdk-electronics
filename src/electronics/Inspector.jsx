@@ -6,7 +6,7 @@ import SafeImage from "./SafeImage";
 import { useProxyBaseUrl } from "../use-proxy-base-url";
 import { useCart } from "../use-cart";
 
-export default function Inspector({ place, onClose }) {
+export default function Inspector({ place, onClose, onOpenProduct }) {
   const proxyBaseUrl = useProxyBaseUrl();
   const { addToCart, isInCart } = useCart();
 
@@ -82,8 +82,9 @@ export default function Inspector({ place, onClose }) {
                 variant="outline"
                 size="sm"
                 className="border-[#F46C21]/50 text-[#F46C21]"
+                onClick={() => onOpenProduct?.()}
               >
-                Contact
+                Dettagli
               </Button>
             </div>
             <div className="text-sm mt-5">

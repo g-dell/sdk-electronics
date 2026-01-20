@@ -5,8 +5,8 @@ import { useProxyBaseUrl } from "../use-proxy-base-url";
 import {
   crossSellFallbackCatalog,
   getCartCategoryIntent,
-  getCrossSellSuggestions,
   getCrossSellTagLabel,
+  mergeCrossSellSuggestions,
   type CrossSellItem,
 } from "./cross-sell";
 
@@ -215,7 +215,8 @@ export default function CrossSellSection({
     setIsLoading(true);
 
     const loadSuggestions = async () => {
-      const fallback = () => getCrossSellSuggestions(cartItems, crossSellFallbackCatalog);
+      const fallback = () =>
+        mergeCrossSellSuggestions(cartItems, null, crossSellFallbackCatalog);
 
       if (typeof window !== "undefined" && window.openai?.callTool) {
         try {
@@ -232,7 +233,11 @@ export default function CrossSellSection({
           });
           const toolSuggestions = extractSuggestions(response);
           if (toolSuggestions) {
-            return toolSuggestions;
+            return mergeCrossSellSuggestions(
+              cartItems,
+              toolSuggestions,
+              crossSellFallbackCatalog
+            );
           }
         } catch {
           // fall back to local list

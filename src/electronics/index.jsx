@@ -50,6 +50,7 @@ function App() {
     return match && match[1] ? match[1] : null;
   }, [location?.pathname]);
   const selectedPlace = places.find((p) => p.id === selectedId) || null;
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [viewState, setViewState] = useState(() => ({
     center: markerCoords.length > 0 ? markerCoords[0] : [0, 0],
     zoom: markerCoords.length > 0 ? 12 : 2,
@@ -57,7 +58,8 @@ function App() {
   const displayMode = useOpenAiGlobal("displayMode");
   const allowInspector = displayMode === "fullscreen";
   const maxHeight = useMaxHeight() ?? undefined;
-  const shouldShowProductModal = Boolean(selectedPlace) && !allowInspector;
+  const shouldShowProductModal =
+    Boolean(selectedPlace) && (!allowInspector || isProductModalOpen);
 
   useEffect(() => {
     if (mapObj.current) return;
@@ -72,14 +74,20 @@ function App() {
     setTimeout(() => {
       fitMapToMarkers(mapObj.current, markerCoords);
     }, 0);
-    // after first paint
-    requestAnimationFrame(() => mapObj.current.resize());
+    const handleResize = () => {
+      if (mapObj.current) {
+        mapObj.current.resize();
+      }
+    };
 
-    // or keep it in sync with window resizes
-    window.addEventListener("resize", mapObj.current.resize);
+    // after first paint
+    requestAnimationFrame(handleResize);
+
+    // keep it in sync with window resizes (preserve map instance context)
+    window.addEventListener("resize", handleResize);
 
     return () => {
-      window.removeEventListener("resize", mapObj.current.resize);
+      window.removeEventListener("resize", handleResize);
       mapObj.current.remove();
     };
     // eslint-disable-next-line
@@ -156,6 +164,7 @@ function App() {
   // Pan the map when the selected place changes via routing
   useEffect(() => {
     if (!mapObj.current || !selectedPlace) return;
+    setIsProductModalOpen(false);
     panTo(selectedPlace.coords, { offsetForInspector: true });
   }, [selectedId]);
 
@@ -235,6 +244,7 @@ function App() {
               key={selectedPlace.id}
               place={selectedPlace}
               onClose={() => navigate("..")}
+              onOpenProduct={() => setIsProductModalOpen(true)}
             />
           )}
         </AnimatePresence>
@@ -244,7 +254,13 @@ function App() {
           {shouldShowProductModal && (
             <ProductDetails
               place={selectedPlace}
-              onClose={() => navigate("..")}
+              onClose={() => {
+                if (allowInspector) {
+                  setIsProductModalOpen(false);
+                  return;
+                }
+                navigate("..");
+              }}
               position="modal"
               relatedSourceItems={places}
               onSelectRelated={(item) => navigate(`/place/${item.id}`)}
