@@ -463,17 +463,17 @@ def rank_products_by_criteria(
     def get_price(product: Dict[str, Any]) -> float:
         """Estrae il prezzo dal prodotto."""
         price_num = 0
-        if "prices" in product:
-            prices_value = product.get("prices")
-            if isinstance(prices_value, (int, float)):
-                price_num = prices_value
-            elif isinstance(prices_value, str):
+        if "price" in product:
+            price_value = product.get("price")
+            if isinstance(price_value, (int, float)):
+                price_num = price_value
+            elif isinstance(price_value, str):
                 try:
-                    price_num = float(prices_value)
+                    price_num = float(price_value)
                 except ValueError:
                     price_num = 0
-            elif isinstance(prices_value, dict):
-                price_num = prices_value.get("amountMax", 0) or prices_value.get("amountMin", 0)
+            elif isinstance(price_value, dict):
+                price_num = price_value.get("amountMax", 0) or price_value.get("amountMin", 0)
         return float(price_num) if price_num else 0.0
     
     def calculate_relevance_score(product: Dict[str, Any]) -> tuple:
@@ -625,7 +625,7 @@ def transform_products_to_places(
     - id, name, coords (lat, lon), description, city, rating, price (stringa), thumbnail, stock
     
     I prodotti dal database prodotti_xeel_shop hanno:
-    - id, name, prices, descrizione_prodotto, imageURLs, 
+    - id, name, price, descrizione_prodotto, imageURLs, 
       voto_prodotto_1_5, categories, primaryCategories, stock
     
     Questa funzione mappa i campi dal database e genera valori default per campi mancanti 
@@ -637,7 +637,7 @@ def transform_products_to_places(
     Mapping colonne DB -> places:
     - id -> id
     - name -> name  
-    - prices -> price (convertito in $/$$/$$$)
+    - price -> price (convertito in $/$$/$$$)
     - descrizione_prodotto -> description
     - imageURLs -> thumbnail
     - voto_prodotto_1_5 -> rating (con fallback a 4.5)
@@ -718,20 +718,20 @@ def transform_products_to_places(
                 f"Using unique ID: '{product_id}' for product '{product.get('name', 'Unknown')}'"
             )
         
-        # Ottieni il prezzo dalla colonna prices
+        # Ottieni il prezzo dalla colonna price
         # Può essere numero, stringa numerica o dict (amountMax/amountMin)
         price_num = 0
-        if "prices" in product:
-            prices_value = product.get("prices")
-            if isinstance(prices_value, (int, float)):
-                price_num = prices_value
-            elif isinstance(prices_value, str):
+        if "price" in product:
+            price_value = product.get("price")
+            if isinstance(price_value, (int, float)):
+                price_num = price_value
+            elif isinstance(price_value, str):
                 try:
-                    price_num = float(prices_value)
+                    price_num = float(price_value)
                 except ValueError:
                     price_num = 0
-            elif isinstance(prices_value, dict):
-                price_num = prices_value.get("amountMax", 0) or prices_value.get("amountMin", 0)
+            elif isinstance(price_value, dict):
+                price_num = price_value.get("amountMax", 0) or price_value.get("amountMin", 0)
         # Converti prezzo in formato stringa in euro (es. 34,59€)
         if isinstance(price_num, (int, float)) and price_num > 0:
             price_str = f"{price_num:.2f}".replace(".", ",") + "€"
@@ -1951,16 +1951,16 @@ def _product_has_category_keywords(product: Dict[str, Any], keywords: List[str])
 
 
 def _extract_price_from_product(product: Dict[str, Any]) -> float:
-    prices_value = product.get("prices")
-    if isinstance(prices_value, (int, float)):
-        return float(prices_value)
-    if isinstance(prices_value, str):
+    price_value = product.get("price")
+    if isinstance(price_value, (int, float)):
+        return float(price_value)
+    if isinstance(price_value, str):
         try:
-            return float(prices_value)
+            return float(price_value)
         except ValueError:
             return 0.0
-    if isinstance(prices_value, dict):
-        candidate = prices_value.get("amountMax", 0) or prices_value.get("amountMin", 0)
+    if isinstance(price_value, dict):
+        candidate = price_value.get("amountMax", 0) or price_value.get("amountMin", 0)
         try:
             return float(candidate)
         except (ValueError, TypeError):

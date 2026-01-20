@@ -1349,7 +1349,7 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 - **Informazioni chiave**:
   - `id`: Identificatore univoco del prodotto
   - `name`: Nome del prodotto
-  - `prices`: Prezzo del prodotto (numero)
+  - `price`: Prezzo del prodotto (numero)
   - `descrizione_prodotto`: Descrizione dettagliata del prodotto
   - `imageURLs`: URL delle immagini del prodotto (può essere una lista separata da virgole)
   - `voto_prodotto_1_5`: Rating del prodotto su scala 1-5

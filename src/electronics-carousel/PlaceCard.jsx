@@ -36,7 +36,7 @@ function PlaceCard({ place, onCardClick }) {
 
   return (
     <div 
-      className="min-w-[220px] select-none max-w-[220px] w-[65vw] sm:w-[220px] self-stretch flex flex-col cursor-pointer bg-white rounded-2xl shadow-[0_6px_16px_rgba(0,0,0,0.08)] ring-1 ring-black/5 transition-shadow hover:shadow-[0_10px_24px_rgba(0,0,0,0.12)] px-2"
+      className="min-w-[220px] select-none max-w-[220px] w-[65vw] sm:w-[220px] self-stretch flex flex-col cursor-pointer bg-white rounded-2xl shadow-[0_6px_16px_rgba(0,0,0,0.08)] ring-1 ring-black/5 transition-shadow hover:shadow-[0_10px_24px_rgba(0,0,0,0.12)] p-2"
       onClick={(e) => {
         // Non aprire i dettagli se si clicca sul pulsante "Aggiungi al carrello"
         if (e.target && e.target.closest && e.target.closest('button')) {
@@ -84,14 +84,14 @@ function PlaceCard({ place, onCardClick }) {
             disabled={inCart}
             className={
               inCart
-                ? "flex-1"
+                ? "flex-1 !bg-slate-300 !text-slate-700"
                 : "flex-1 !bg-sky-200 !text-slate-900 hover:!bg-sky-300"
             }
           >
             {inCart ? (
               <>
                 <ShoppingCart className="h-4 w-4 mr-1" />
-                Nel carrello
+                Aggiunto
               </>
             ) : (
               <>
