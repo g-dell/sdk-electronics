@@ -6,6 +6,8 @@ import { AvocadoIcon, BreadIcon, EggIcon, JarIcon, TomatoIcon } from "./icons";
 import CrossSellSection from "./CrossSellSection";
 import type { CartItem } from "../types";
 import ProductDetails from "../utils/ProductDetails";
+import SafeImage from "../electronics/SafeImage.jsx";
+import { useProxyBaseUrl } from "../use-proxy-base-url";
 
 const iconMatchers = [
   { keywords: ["egg", "eggs"], Icon: EggIcon },
@@ -19,6 +21,7 @@ function App() {
   // Questo garantisce che il carrello mostri SOLO i prodotti aggiunti tramite i pulsanti "Aggiungi al carrello"
   // Ignora completamente qualsiasi altro dato in widgetState (es. da electronics-shop)
   const { cartItems, addToCart, removeFromCart, clearCart } = useCart();
+  const proxyBaseUrl = useProxyBaseUrl();
   const [selectedItem, setSelectedItem] = useState<CartItem | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -369,11 +372,20 @@ function App() {
           }}
         >
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm">
-              {(() => {
-                const Icon = getIconForItem(item.name);
-                return <Icon className="h-6 w-6" />;
-              })()}
+            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
+              {item.image ? (
+                <SafeImage
+                  src={item.image}
+                  alt={item.name}
+                  className="h-full w-full object-cover"
+                  proxyBaseUrl={proxyBaseUrl}
+                />
+              ) : (
+                (() => {
+                  const Icon = getIconForItem(item.name);
+                  return <Icon className="h-6 w-6" />;
+                })()
+              )}
             </div>
             <div>
               <p className="text-sm font-semibold text-black">{item.name}</p>
