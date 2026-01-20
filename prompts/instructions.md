@@ -243,6 +243,8 @@ Se l’ordinamento viola un vincolo esplicito:
 
 - Il carrello contiene **solo** prodotti aggiunti manualmente
 - Se vuoto → mostra “Carrello vuoto”
+- Il carrello è **condiviso** tra i widget (niente carrelli separati in `electronics-shop`)
+- Stripe metadata: **non** includere descrizioni lunghe (usa solo id/nome/qty/prezzo)
 
 **Dopo un widget prodotti, chiedi**:
 > “Vuoi continuare con gli acquisti o vedere il carrello?”

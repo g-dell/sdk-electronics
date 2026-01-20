@@ -1072,9 +1072,13 @@ class CORSMiddleware(BaseHTTPMiddleware):
             
             return response
         
-        # Per risposte SSE (/mcp endpoint), passa direttamente senza modificare headers
+        # Per risposte SSE/streaming, passa direttamente senza modificare headers
         # Le risposte SSE sono gestite direttamente da sse-starlette e non seguono il normale flusso HTTP
-        if request.url.path.startswith("/mcp") or request.url.path == "/sse":
+        if (
+            request.url.path.startswith("/mcp")
+            or request.url.path == "/sse"
+            or request.url.path.startswith("/messages")
+        ):
             return await call_next(request)
         
         # Per tutte le altre richieste, processa normalmente e aggiungi header CORS
@@ -1113,9 +1117,13 @@ class CSPMiddleware(BaseHTTPMiddleware):
     """
     
     async def dispatch(self, request: Request, call_next):
-        # Per risposte SSE (/mcp endpoint), passa direttamente senza modificare headers
+        # Per risposte SSE/streaming, passa direttamente senza modificare headers
         # Le risposte SSE sono gestite direttamente da sse-starlette e non seguono il normale flusso HTTP
-        if request.url.path.startswith("/mcp") or request.url.path == "/sse":
+        if (
+            request.url.path.startswith("/mcp")
+            or request.url.path == "/sse"
+            or request.url.path.startswith("/messages")
+        ):
             return await call_next(request)
         
         response = await call_next(request)
@@ -3460,16 +3468,21 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
 
         cart = CheckoutCart(items=checkout_input.items, totals=totals)
 
+        metadata_payload = {
+            "purpose": "acp_demo",
+            "items_count": str(len(checkout_input.items)),
+            "currency": currency,
+            "total_minor": str(totals.grand_total_minor),
+        }
+        logger.info(f"Checkout metadata (stripe): {metadata_payload}")
+
         try:
             pi = create_payment_intent(
                 amount_minor=totals.grand_total_minor,
                 currency=currency,
                 buyer_email=checkout_input.buyer_email,
                 shared_payment_token=checkout_input.shared_payment_token,
-                metadata={
-                    "purpose": "acp_demo",
-                    "items": json.dumps([item.model_dump() for item in checkout_input.items]),
-                },
+                metadata=metadata_payload,
             )
         except Exception as e:
             error_msg = f"Error creating payment intent: {str(e)}"
