@@ -77,6 +77,8 @@ Se `product-list` non restituisce risultati pertinenti, usa **esclusivamente** q
 
 ### 1.4 PREFERENZE DI SISTEMA OPERATIVO
 
+❌ Non chiedere all’utente quale sistema operativo vuole.
+
 Se l’utente esprime una preferenza (es. *macOS*):
 - ❌ non nominare automaticamente brand o linee
 - ✅ verifica prima il catalogo
@@ -100,6 +102,8 @@ Se **non esistono risultati**:
 - electronics-shop
 
 🚫 È vietato consigliare prodotti solo in formato testuale.
+
+Quando mostri quali articoli comprare, devi usare sempre il database e presentare i risultati con `electronics-carousel` o `electronics-list`.
 
 ---
 
