@@ -36,6 +36,7 @@ const ACCESSORY_KEYWORDS = [
   "caricatore",
   "charger",
   "alimentatore",
+  "trasformatore",
   "adattatore",
   "adapter",
   "dock",
@@ -93,7 +94,7 @@ export const crossSellFallbackCatalog: CrossSellItem[] = [
     name: "Spray delicato per pulizia display",
     price: 12.9,
     imageUrl: "https://persistent.oaistatic.com/electronics/electronics-2.png",
-    tags: [CLEANING_TAG, RECOMMENDED_TAG],
+    tags: [CLEANING_TAG, RECOMMENDED_TAG, "spray"],
     compatibleWith: ["pc", "tv"],
     priority: 90,
   },
@@ -113,7 +114,7 @@ export const crossSellFallbackCatalog: CrossSellItem[] = [
     name: "Caricatore USB-C 65W",
     price: 34.9,
     imageUrl: "https://persistent.oaistatic.com/electronics/electronics-4.png",
-    tags: ["charger", POPULAR_TAG],
+    tags: ["charger", "power-adapter", POPULAR_TAG],
     compatibleWith: ["pc"],
     priority: 78,
   },
@@ -385,7 +386,17 @@ export function getCrossSellSuggestions(
 
   if (categories.includes("pc")) {
     const needsUsbC = !hasAccessoryKeyword(cartItems, ["usb-c", "usb c"]);
-    const needsCharger = !hasAccessoryKeyword(cartItems, ["charger", "caricatore"]);
+    const needsPowerAdapter = !hasAccessoryKeyword(cartItems, [
+      "charger",
+      "caricatore",
+      "alimentatore",
+      "trasformatore",
+      "power adapter",
+      "adapter",
+    ]);
+    const needsMouse = !hasAccessoryKeyword(cartItems, ["mouse", "trackpad"]);
+    const needsKeyboard = !hasAccessoryKeyword(cartItems, ["keyboard", "tastiera"]);
+    const needsScreenSpray = !hasAccessoryKeyword(cartItems, ["spray", "pulizia", "clean"]);
     const pcCandidates = eligible.filter((item) => item.compatibleWith.includes("pc"));
 
     if (needsUsbC) {
@@ -394,8 +405,36 @@ export function getCrossSellSuggestions(
         .forEach(pushSuggestion);
     }
 
-    if (needsCharger) {
-      sortByPriority(pcCandidates.filter((item) => item.tags?.includes("charger")))
+    if (needsPowerAdapter) {
+      sortByPriority(
+        pcCandidates.filter((item) =>
+          item.tags?.some((tag) => tag === "charger" || tag === "power-adapter")
+        )
+      )
+        .slice(0, 1)
+        .forEach(pushSuggestion);
+    }
+
+    if (needsMouse) {
+      sortByPriority(pcCandidates.filter((item) => item.tags?.includes("mouse")))
+        .slice(0, 1)
+        .forEach(pushSuggestion);
+    }
+
+    if (needsKeyboard) {
+      sortByPriority(pcCandidates.filter((item) => item.tags?.includes("keyboard")))
+        .slice(0, 1)
+        .forEach(pushSuggestion);
+    }
+
+    if (needsScreenSpray && hasScreenDevice) {
+      sortByPriority(
+        eligible.filter(
+          (item) =>
+            item.tags?.includes("spray") &&
+            item.compatibleWith.some((category) => categories.includes(category))
+        )
+      )
         .slice(0, 1)
         .forEach(pushSuggestion);
     }
