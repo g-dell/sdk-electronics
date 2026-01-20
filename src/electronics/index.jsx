@@ -45,6 +45,11 @@ function App() {
   const markerCoords = places.map((p) => p.coords);
   const navigate = useNavigate();
   const location = useLocation();
+  const closePath = React.useMemo(() => {
+    if (!location?.pathname) return "/";
+    const next = location.pathname.replace(/\/place\/[^/]+$/, "");
+    return next === "" ? "/" : next;
+  }, [location?.pathname]);
   const selectedId = React.useMemo(() => {
     const match = location?.pathname?.match(/(?:^|\/)place\/([^/]+)/);
     return match && match[1] ? match[1] : null;
@@ -213,7 +218,7 @@ function App() {
             uniform
             onClick={() => {
               if (selectedId) {
-                navigate("..", { replace: true });
+                navigate(closePath, { replace: true });
               }
               if (window?.webplus?.requestDisplayMode) {
                 window.webplus.requestDisplayMode({ mode: "fullscreen" });
@@ -243,7 +248,7 @@ function App() {
             <Inspector
               key={selectedPlace.id}
               place={selectedPlace}
-              onClose={() => navigate("..")}
+              onClose={() => navigate(closePath, { replace: true })}
               onOpenProduct={() => setIsProductModalOpen(true)}
             />
           )}
@@ -259,7 +264,8 @@ function App() {
                   setIsProductModalOpen(false);
                   return;
                 }
-                navigate("..");
+                setIsProductModalOpen(false);
+                navigate(closePath, { replace: true });
               }}
               position="modal"
               relatedSourceItems={places}
