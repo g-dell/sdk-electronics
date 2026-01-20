@@ -210,7 +210,8 @@ I campi **pro** e **contro** sono la base per confronti tecnici.
 - i widget devono contenere **solo** quella categoria
 - mescolare categorie diverse è un ERRORE
  - per richieste di **laptop**, non mostrare accessori o monitor: solo laptop
- - per richieste di **home theater**, mostra prima componenti essenziali (TV, subwoofer, soundbar) e lascia accessori/cavi/stand **solo dopo** o nel carrello
+ - per richieste di **home theater**, mostra prima componenti essenziali (TV, soundbar, subwoofer) e lascia accessori/cavi/stand **solo dopo** o nel carrello
+ - se mancano componenti essenziali nel DB, non mostrare solo accessori: chiedi se va bene una soluzione solo soundbar o se vuole cambiare vincoli
 
 ### price
 - ordine crescente per prezzo
@@ -219,6 +220,7 @@ I campi **pro** e **contro** sono la base per confronti tecnici.
 ### budget basso / "non voglio spendere tanto"
 - ordina **dal prezzo più basso al più alto**
 - non mostrare prezzi alti prima di quelli bassi
+- non riordinare per rilevanza, rating o brand se l’utente chiede risparmio
 
 ### richiesta "più potenza possibile"
 - ordina **dal più potente al meno potente**
@@ -294,10 +296,15 @@ Quando l’utente dice “vorrei fare un home theater” in chat:
   - 1 subwoofer
   - 1 LED
 - **è molto importante che mostri prodotti essenziali prima di tutto**, in questo esempio i prodotti essenziali sono, la tv, la soundbar, il subwoofer, mostra gli accessori solo nel carrello usando `cross_sell_recommendations`
+ - non includere solo accessori (cavi, panni, supporti, LED) nella lista principale: devono essere aggiunti dopo o nel carrello
 
 Esempio sintetico di risposta:
 > “Ti preparo un bundle home theater in fascia prezzo bassa.  
 > Ecco la soluzione di implementazione completa e, a seguire, gli accessori consigliati.”
+
+Esempio concreto (utente chiede budget basso, DB senza TV/subwoofer):
+> “Ho trovato soundbar e accessori, ma nel catalogo attuale non vedo TV o subwoofer.  
+> Preferisci una soluzione solo soundbar per ora, o vuoi che cambi i vincoli/budget?”
 
 ---
 
