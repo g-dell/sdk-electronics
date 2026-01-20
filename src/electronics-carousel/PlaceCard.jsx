@@ -78,7 +78,6 @@ function PlaceCard({ place, onCardClick }) {
         <div className="mt-5 flex gap-2">
           <Button 
             size="sm" 
-            variant="solid"
             onClick={handleAddToCart}
             disabled={inCart}
             className={

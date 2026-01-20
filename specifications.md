@@ -940,11 +940,11 @@ Questa sezione verifica che il client/widget rispetti tutte le linee guida MCP C
 
 #### 8.2.4 Widget State Management
 - [x] **Widget State**: Implementato gestione stato widget
-  - **Completato**: [2026-01-08] Implementato `useWidgetState()` hook in `src/electronics-shop/index.tsx` (riga 370-372). Usa `window.openai.setWidgetState()` per sincronizzare stato con ChatGPT. Lo stato include `cartItems`, `selectedCartItemId`, e `state` (checkout).
+  - **Aggiornato**: [2026-01-20] `electronics-shop` usa `useWidgetState()` **solo** per `selectedCartItemId` e `state` (checkout). Il carrello è condiviso e gestito da `useCart()` (chiave `sharedCartItems`), non da `widgetState.cartItems`.
 - [x] **Widget Props**: Implementato gestione props dal tool output
   - **Completato**: [2026-01-08] Implementato `useWidgetProps()` hook in `src/electronics-shop/index.tsx` (riga 369). Il widget riceve props da `toolOutput` e `widgetProps` che permettono a ChatGPT di passare dati strutturati al widget.
 - [x] **State Persistence**: Verificare che lo stato persista correttamente tra le interazioni
-  - **Implementazione**: Lo stato include `cartItems`, `selectedCartItemId`, e `state` (checkout) che vengono mantenuti tra le chiamate tool grazie alla sincronizzazione con `window.openai.widgetState`.
+  - **Implementazione**: `selectedCartItemId` e `state` persistono via `window.openai.widgetState`; il carrello persiste tramite `useCart()` e la chiave globale `sharedCartItems`.
 
 #### 8.2.5 Tool Invocation
 - [x] **Call Tool**: Il widget può chiamare tool MCP
@@ -1454,7 +1454,7 @@ Attraverso il tool `product-list` accederai al database `app_gpt_elettronica` co
 
 ⚠️ **Widget Interattivi**: I tool `electronics-map`, `electronics-carousel`, `electronics-albums`, `electronics-list`, e `electronics-shop` restituiscono widget HTML interattivi che vengono visualizzati direttamente nella chat. Questi widget permettono all'utente di interagire visivamente con i prodotti.
 
-⚠️ **Carrello e Checkout**: Il tool `electronics-shop` include funzionalità complete di carrello con possibilità di aggiungere/rimuovere prodotti, selezionare quantità, filtrare per categoria (Video & TV, Informatica, Audio), e procedere al checkout. Usalo quando l'utente è pronto ad acquistare. Il widget `shopping-cart` completa il pagamento simulato, **svuota il carrello** e mostra un **riepilogo post-acquisto** con prodotti, totali, dati fattura e data di consegna. Il pulsante "Procedi al pagamento" apre una **modale** per inserire i dati di fatturazione. I prezzi includono IVA; la spedizione è mostrata nel carrello (gratis sopra 50€).
+⚠️ **Carrello e Checkout**: Il tool `electronics-shop` include funzionalità complete di carrello con possibilità di aggiungere/rimuovere prodotti, selezionare quantità, filtrare per categoria (Video & TV, Informatica, Audio), e procedere al checkout. **Il carrello è condiviso** con `shopping-cart` tramite `useCart()` (chiave globale `sharedCartItems`), quindi non esistono carrelli separati. Il widget `shopping-cart` completa il pagamento simulato, **svuota il carrello** e mostra un **riepilogo post-acquisto** con prodotti, totali, dati fattura e data di consegna. Il pulsante "Procedi al pagamento" apre una **modale** per inserire i dati di fatturazione. I prezzi includono IVA; la spedizione è mostrata nel carrello (gratis sopra 50€).
 
 ⚠️ **Database in Tempo Reale**: Il tool `product-list` recupera dati in tempo reale dal database MotherDuck (`app_gpt_elettronica`). I dati sono sempre aggiornati e includono tutti i dettagli tecnici necessari per confronti e analisi.
 
@@ -1614,8 +1614,10 @@ Questa sezione documenta le migliorie implementate per migliorare l'esperienza u
   - **Implementazione**:
     1. ✅ **Pulsante checkout**: apre la modale per l'inserimento dei dati.
     2. ✅ **Conferma e paga**: avvia il flusso di pagamento e chiude la modale al successo.
+    3. ✅ **Stripe metadata ridotta**: rimosse descrizioni lunghe dagli item inviati a Stripe (limite 500 caratteri per valore metadata).
   - **File modificati**:
     - `src/shopping-cart/index.tsx`
+    - `electronics_server_python/main.py`
 
 ### 11.7 Spedizione visibile e IVA inclusa
 

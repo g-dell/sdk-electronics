@@ -3468,7 +3468,17 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 shared_payment_token=checkout_input.shared_payment_token,
                 metadata={
                     "purpose": "acp_demo",
-                    "items": json.dumps([item.model_dump() for item in checkout_input.items]),
+                    "items": json.dumps(
+                        [
+                            {
+                                "id": item.id,
+                                "name": item.name,
+                                "quantity": item.quantity,
+                                "unit_amount_major": item.unit_amount_major,
+                            }
+                            for item in checkout_input.items
+                        ]
+                    ),
                 },
             )
         except Exception as e:
