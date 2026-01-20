@@ -82,7 +82,11 @@ function PlaceCard({ place, onCardClick }) {
             variant="solid"
             onClick={handleAddToCart}
             disabled={inCart}
-            className="flex-1"
+            className={
+              inCart
+                ? "flex-1"
+                : "flex-1 !bg-sky-200 !text-slate-900 hover:!bg-sky-300"
+            }
           >
             {inCart ? (
               <>

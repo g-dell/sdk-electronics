@@ -200,9 +200,22 @@ I campi **pro** e **contro** sono la base per confronti tecnici.
 
 ## 6. ORDINAMENTO PREZZI (OBBLIGATORIO)
 
+### Categoria richiesta
+- se l’utente chiede **una categoria specifica** (es. laptop), filtra `product-list` su **una sola categoria**
+- i widget devono contenere **solo** quella categoria
+- mescolare categorie diverse è un ERRORE
+
 ### max_price
 - ordine crescente per prezzo
 - prodotti oltre il max_price **sempre in fondo**
+
+### budget basso / "non voglio spendere tanto"
+- ordina **dal prezzo più basso al più alto**
+- non mostrare prezzi alti prima di quelli bassi
+
+### richiesta "più potenza possibile"
+- ordina **dal più potente al meno potente**
+- a parità di potenza → prezzo più basso prima
 
 ### target_price
 - ordine per distanza assoluta dal target

@@ -200,6 +200,7 @@ export default function ProductDetails({
   };
 
   if (!place) return null;
+  const inCart = isInCart(place.id);
 
   // Stili in base alla posizione
   const containerClasses = {
@@ -276,11 +277,15 @@ export default function ProductDetails({
                   variant="solid" 
                   size="sm"
                   onClick={handleAddToCart}
-                  disabled={isInCart(place.id)}
-                  className="flex-1"
+                  disabled={inCart}
+                  className={
+                    inCart
+                      ? "flex-1"
+                      : "flex-1 !bg-sky-200 !text-slate-900 hover:!bg-sky-300"
+                  }
                 >
                   <ShoppingCart className="h-4 w-4 mr-2" />
-                  {isInCart(place.id) ? "Nel carrello" : "Aggiungi al carrello"}
+                  {inCart ? "Nel carrello" : "Aggiungi al carrello"}
                 </Button>
                 <Button
                   color="primary"

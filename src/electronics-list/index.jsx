@@ -141,6 +141,11 @@ function App() {
                     uniform
                     onClick={() => handleAddToCart(place)}
                     disabled={isInCart(place.id)}
+                    className={
+                      isInCart(place.id)
+                        ? undefined
+                        : "!bg-sky-200 !text-slate-900 hover:!bg-sky-300"
+                    }
                   >
                     {isInCart(place.id) ? (
                       <ShoppingCart strokeWidth={1.5} className="h-5 w-5" />
