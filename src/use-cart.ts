@@ -10,10 +10,41 @@ type CartWidgetState = {
 
 // Chiave specifica per il carrello condiviso tra widget (diversa da electronics-shop)
 const CART_STATE_KEY = "sharedCartItems";
+const CART_STORAGE_KEY = "sharedCartItemsBackup";
 
 const createDefaultCartState = (): CartWidgetState => ({
   items: [],
 });
+
+function readCartBackup(): CartWidgetState | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.sessionStorage?.getItem(CART_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as CartWidgetState;
+    if (parsed && Array.isArray(parsed.items)) {
+      return parsed;
+    }
+  } catch {
+    // ignore invalid storage
+  }
+  return null;
+}
+
+function writeCartBackup(state: CartWidgetState) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.sessionStorage?.setItem(CART_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore storage failures
+  }
+}
 
 /**
  * Hook per gestire il carrello condiviso tra tutti i widget
@@ -50,6 +81,11 @@ export function useCart() {
         }
       }
     }
+
+    const backup = readCartBackup();
+    if (backup) {
+      return backup;
+    }
     
     return null;
   }, [widgetStateGlobal]);
@@ -72,7 +108,7 @@ export function useCart() {
     }
     
     // Altrimenti parte sempre vuoto
-    return createDefaultCartState();
+    return readCartBackup() ?? createDefaultCartState();
   });
 
   // Ref per tracciare se stiamo aggiornando lo stato localmente (per evitare loop)
@@ -146,6 +182,7 @@ export function useCart() {
         setCartState((prev) => {
           const prevItems = Array.isArray(prev?.items) ? prev.items : [];
           if (JSON.stringify(prevItems) !== JSON.stringify(currentGlobalItems)) {
+            writeCartBackup(currentGlobalCart || createDefaultCartState());
             return currentGlobalCart || createDefaultCartState();
           }
           return prev;
@@ -162,6 +199,7 @@ export function useCart() {
           ...currentGlobalState,
           [CART_STATE_KEY]: cartState,
         };
+        writeCartBackup(cartState);
         void window.openai.setWidgetState(newState).then(() => {
           // Reset il flag dopo che setWidgetState è completato
           // Usa setTimeout per dare tempo all'evento di propagarsi e agli altri widget di reagire

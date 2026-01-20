@@ -32,7 +32,19 @@ export function useWidgetState<T extends UnknownObject>(
       _setWidgetState((prevState) => {
         const newState = typeof state === "function" ? state(prevState) : state;
 
-        if (newState != null && typeof window !== "undefined") {
+        if (typeof window !== "undefined") {
+          if (newState == null) {
+            void window.openai?.setWidgetState?.(newState);
+            return newState;
+          }
+
+          if (typeof newState === "object") {
+            const existing = (window.openai?.widgetState ?? {}) as UnknownObject;
+            const mergedState = { ...existing, ...(newState as UnknownObject) } as T;
+            void window.openai?.setWidgetState?.(mergedState);
+            return mergedState;
+          }
+
           void window.openai?.setWidgetState?.(newState);
         }
 

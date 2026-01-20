@@ -77,14 +77,6 @@ export default function Inspector({ place, onClose }) {
                 <ShoppingCart className="h-4 w-4 mr-2" />
                 {inCart ? "Nel carrello" : "Aggiungi al carrello"}
               </Button>
-              <Button
-                color="primary"
-                variant="outline"
-                size="sm"
-                className="border-[#F46C21]/50 text-[#F46C21]"
-              >
-                Contact
-              </Button>
             </div>
             <div className="text-sm mt-5">
               {place.description} Enjoy a slice at one of SF's favorites. Fresh

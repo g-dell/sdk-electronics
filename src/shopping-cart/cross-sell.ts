@@ -29,6 +29,49 @@ const PC_KEYWORDS = [
   "gaming",
 ];
 const TV_KEYWORDS = ["tv", "televisore", "television", "smart tv", "oled", "qled"];
+const ACCESSORY_KEYWORDS = [
+  "cavo",
+  "usb",
+  "hdmi",
+  "caricatore",
+  "charger",
+  "alimentatore",
+  "trasformatore",
+  "adattatore",
+  "adapter",
+  "dock",
+  "hub",
+  "mouse",
+  "tastiera",
+  "keyboard",
+  "trackpad",
+  "cuffie",
+  "headset",
+  "speaker",
+  "casse",
+  "custodia",
+  "cover",
+  "zaino",
+  "borsa",
+  "supporto",
+  "stand",
+  "staffa",
+  "mount",
+  "telecomando",
+  "remote",
+  "panno",
+  "spray",
+  "pulizia",
+  "ssd",
+  "storage",
+  "memoria",
+  "ram",
+  "battery",
+  "batteria",
+  "power",
+  "ups",
+  "ciabatta",
+];
 
 const CLEANING_TAG = "screen-cleaning";
 const POPULAR_TAG = "popular";
@@ -51,7 +94,7 @@ export const crossSellFallbackCatalog: CrossSellItem[] = [
     name: "Spray delicato per pulizia display",
     price: 12.9,
     imageUrl: "https://persistent.oaistatic.com/electronics/electronics-2.png",
-    tags: [CLEANING_TAG, RECOMMENDED_TAG],
+    tags: [CLEANING_TAG, RECOMMENDED_TAG, "spray"],
     compatibleWith: ["pc", "tv"],
     priority: 90,
   },
@@ -71,9 +114,39 @@ export const crossSellFallbackCatalog: CrossSellItem[] = [
     name: "Caricatore USB-C 65W",
     price: 34.9,
     imageUrl: "https://persistent.oaistatic.com/electronics/electronics-4.png",
-    tags: ["charger", POPULAR_TAG],
+    tags: ["charger", "power-adapter", POPULAR_TAG],
     compatibleWith: ["pc"],
     priority: 78,
+  },
+  {
+    id: "cs-mouse-01",
+    sku: "CS-MOUSE-01",
+    name: "Mouse wireless ergonomico",
+    price: 29.9,
+    imageUrl: "https://persistent.oaistatic.com/electronics/electronics-5.png",
+    tags: ["mouse", RECOMMENDED_TAG],
+    compatibleWith: ["pc"],
+    priority: 77,
+  },
+  {
+    id: "cs-keyboard-01",
+    sku: "CS-KEYBOARD-01",
+    name: "Tastiera compatta Bluetooth",
+    price: 49.9,
+    imageUrl: "https://persistent.oaistatic.com/electronics/electronics-6.png",
+    tags: ["keyboard", POPULAR_TAG],
+    compatibleWith: ["pc"],
+    priority: 76,
+  },
+  {
+    id: "cs-laptop-bag-01",
+    sku: "CS-LAPTOP-BAG-01",
+    name: "Zaino imbottito per laptop 15\"",
+    price: 59.9,
+    imageUrl: "https://persistent.oaistatic.com/electronics/electronics-1.png",
+    tags: ["zaino", RECOMMENDED_TAG],
+    compatibleWith: ["pc"],
+    priority: 74,
   },
   {
     id: "cs-hdmi-01",
@@ -150,6 +223,12 @@ function getCartText(cartItems: CartItem[]) {
     .join(" ");
 }
 
+function getItemText(item: CrossSellItem) {
+  return [item.name, item.sku, item.id, ...(item.tags ?? [])]
+    .filter(Boolean)
+    .join(" ");
+}
+
 export function getCartCategoryIntent(cartItems: CartItem[]): CartCategoryIntent {
   if (!cartItems.length) {
     return { categories: [], hasScreenDevice: false };
@@ -172,6 +251,53 @@ export function getCartCategoryIntent(cartItems: CartItem[]): CartCategoryIntent
   }
 
   return { categories, hasScreenDevice: hasPc || hasTv };
+}
+
+function inferItemCategories(item: CrossSellItem): CrossSellCategory[] {
+  if (item.compatibleWith.length > 0) {
+    return [...new Set(item.compatibleWith)];
+  }
+  const normalized = normalizeText(getItemText(item));
+  const categories: CrossSellCategory[] = [];
+  if (PC_KEYWORDS.some((keyword) => normalized.includes(keyword))) {
+    categories.push("pc");
+  }
+  if (TV_KEYWORDS.some((keyword) => normalized.includes(keyword))) {
+    categories.push("tv");
+  }
+  return categories;
+}
+
+function isAccessoryItem(item: CrossSellItem) {
+  const normalized = normalizeText(getItemText(item));
+  return ACCESSORY_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
+
+function isPrimaryDeviceItem(item: CrossSellItem) {
+  const normalized = normalizeText(getItemText(item));
+  const mentionsDevice =
+    PC_KEYWORDS.some((keyword) => normalized.includes(keyword)) ||
+    TV_KEYWORDS.some((keyword) => normalized.includes(keyword));
+  return mentionsDevice && !isAccessoryItem(item);
+}
+
+function filterSuggestionsForCart(cartItems: CartItem[], items: CrossSellItem[]) {
+  const { categories } = getCartCategoryIntent(cartItems);
+  if (categories.length === 0) {
+    return items.filter((item) => !isPrimaryDeviceItem(item));
+  }
+
+  const categorySet = new Set(categories);
+  return items.filter((item) => {
+    if (isPrimaryDeviceItem(item)) {
+      return false;
+    }
+    const itemCategories = inferItemCategories(item);
+    if (itemCategories.length === 0) {
+      return isAccessoryItem(item);
+    }
+    return itemCategories.some((category) => categorySet.has(category));
+  });
 }
 
 function getCartIdentifiers(cartItems: CartItem[]) {
@@ -260,7 +386,17 @@ export function getCrossSellSuggestions(
 
   if (categories.includes("pc")) {
     const needsUsbC = !hasAccessoryKeyword(cartItems, ["usb-c", "usb c"]);
-    const needsCharger = !hasAccessoryKeyword(cartItems, ["charger", "caricatore"]);
+    const needsPowerAdapter = !hasAccessoryKeyword(cartItems, [
+      "charger",
+      "caricatore",
+      "alimentatore",
+      "trasformatore",
+      "power adapter",
+      "adapter",
+    ]);
+    const needsMouse = !hasAccessoryKeyword(cartItems, ["mouse", "trackpad"]);
+    const needsKeyboard = !hasAccessoryKeyword(cartItems, ["keyboard", "tastiera"]);
+    const needsScreenSpray = !hasAccessoryKeyword(cartItems, ["spray", "pulizia", "clean"]);
     const pcCandidates = eligible.filter((item) => item.compatibleWith.includes("pc"));
 
     if (needsUsbC) {
@@ -269,8 +405,36 @@ export function getCrossSellSuggestions(
         .forEach(pushSuggestion);
     }
 
-    if (needsCharger) {
-      sortByPriority(pcCandidates.filter((item) => item.tags?.includes("charger")))
+    if (needsPowerAdapter) {
+      sortByPriority(
+        pcCandidates.filter((item) =>
+          item.tags?.some((tag) => tag === "charger" || tag === "power-adapter")
+        )
+      )
+        .slice(0, 1)
+        .forEach(pushSuggestion);
+    }
+
+    if (needsMouse) {
+      sortByPriority(pcCandidates.filter((item) => item.tags?.includes("mouse")))
+        .slice(0, 1)
+        .forEach(pushSuggestion);
+    }
+
+    if (needsKeyboard) {
+      sortByPriority(pcCandidates.filter((item) => item.tags?.includes("keyboard")))
+        .slice(0, 1)
+        .forEach(pushSuggestion);
+    }
+
+    if (needsScreenSpray && hasScreenDevice) {
+      sortByPriority(
+        eligible.filter(
+          (item) =>
+            item.tags?.includes("spray") &&
+            item.compatibleWith.some((category) => categories.includes(category))
+        )
+      )
         .slice(0, 1)
         .forEach(pushSuggestion);
     }
@@ -330,6 +494,24 @@ export function getCrossSellSuggestions(
   scored.forEach(pushSuggestion);
 
   return suggestions.slice(0, 8);
+}
+
+export function mergeCrossSellSuggestions(
+  cartItems: CartItem[],
+  toolSuggestions: CrossSellItem[] | null,
+  catalog: CrossSellItem[]
+): CrossSellItem[] {
+  const fallback = getCrossSellSuggestions(cartItems, catalog);
+  if (!toolSuggestions || toolSuggestions.length === 0) {
+    return fallback;
+  }
+
+  const filteredTool = filterSuggestionsForCart(cartItems, toolSuggestions);
+  if (filteredTool.length === 0) {
+    return fallback;
+  }
+
+  return dedupeBySku([...filteredTool, ...fallback]).slice(0, 8);
 }
 
 export function getCrossSellTagLabel(tags?: string[]) {

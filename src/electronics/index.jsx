@@ -5,7 +5,6 @@ import { createRoot } from "react-dom/client";
 import { AnimatePresence } from "framer-motion";
 import Inspector from "./Inspector";
 import Sidebar from "./Sidebar";
-import ProductDetails from "../utils/ProductDetails";
 import { useOpenAiGlobal } from "../use-openai-global";
 import { useMaxHeight } from "../use-max-height";
 import { Maximize2 } from "lucide-react";
@@ -45,6 +44,11 @@ function App() {
   const markerCoords = places.map((p) => p.coords);
   const navigate = useNavigate();
   const location = useLocation();
+  const closePath = React.useMemo(() => {
+    if (!location?.pathname) return "/";
+    const next = location.pathname.replace(/\/place\/[^/]+$/, "");
+    return next === "" ? "/" : next;
+  }, [location?.pathname]);
   const selectedId = React.useMemo(() => {
     const match = location?.pathname?.match(/(?:^|\/)place\/([^/]+)/);
     return match && match[1] ? match[1] : null;
@@ -57,7 +61,6 @@ function App() {
   const displayMode = useOpenAiGlobal("displayMode");
   const allowInspector = displayMode === "fullscreen";
   const maxHeight = useMaxHeight() ?? undefined;
-  const shouldShowProductModal = Boolean(selectedPlace) && !allowInspector;
 
   useEffect(() => {
     if (mapObj.current) return;
@@ -72,14 +75,20 @@ function App() {
     setTimeout(() => {
       fitMapToMarkers(mapObj.current, markerCoords);
     }, 0);
-    // after first paint
-    requestAnimationFrame(() => mapObj.current.resize());
+    const handleResize = () => {
+      if (mapObj.current) {
+        mapObj.current.resize();
+      }
+    };
 
-    // or keep it in sync with window resizes
-    window.addEventListener("resize", mapObj.current.resize);
+    // after first paint
+    requestAnimationFrame(handleResize);
+
+    // keep it in sync with window resizes (preserve map instance context)
+    window.addEventListener("resize", handleResize);
 
     return () => {
-      window.removeEventListener("resize", mapObj.current.resize);
+      window.removeEventListener("resize", handleResize);
       mapObj.current.remove();
     };
     // eslint-disable-next-line
@@ -204,7 +213,7 @@ function App() {
             uniform
             onClick={() => {
               if (selectedId) {
-                navigate("..", { replace: true });
+                navigate(closePath, { replace: true });
               }
               if (window?.webplus?.requestDisplayMode) {
                 window.webplus.requestDisplayMode({ mode: "fullscreen" });
@@ -234,20 +243,7 @@ function App() {
             <Inspector
               key={selectedPlace.id}
               place={selectedPlace}
-              onClose={() => navigate("..")}
-            />
-          )}
-        </AnimatePresence>
-
-        {/* Product modal (inline/pip) */}
-        <AnimatePresence>
-          {shouldShowProductModal && (
-            <ProductDetails
-              place={selectedPlace}
-              onClose={() => navigate("..")}
-              position="modal"
-              relatedSourceItems={places}
-              onSelectRelated={(item) => navigate(`/place/${item.id}`)}
+              onClose={() => navigate(closePath, { replace: true })}
             />
           )}
         </AnimatePresence>
