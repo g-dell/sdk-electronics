@@ -5,7 +5,6 @@ import { createRoot } from "react-dom/client";
 import { AnimatePresence } from "framer-motion";
 import Inspector from "./Inspector";
 import Sidebar from "./Sidebar";
-import ProductDetails from "../utils/ProductDetails";
 import { useOpenAiGlobal } from "../use-openai-global";
 import { useMaxHeight } from "../use-max-height";
 import { Maximize2 } from "lucide-react";
@@ -55,7 +54,6 @@ function App() {
     return match && match[1] ? match[1] : null;
   }, [location?.pathname]);
   const selectedPlace = places.find((p) => p.id === selectedId) || null;
-  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [viewState, setViewState] = useState(() => ({
     center: markerCoords.length > 0 ? markerCoords[0] : [0, 0],
     zoom: markerCoords.length > 0 ? 12 : 2,
@@ -63,8 +61,6 @@ function App() {
   const displayMode = useOpenAiGlobal("displayMode");
   const allowInspector = displayMode === "fullscreen";
   const maxHeight = useMaxHeight() ?? undefined;
-  const shouldShowProductModal =
-    Boolean(selectedPlace) && (!allowInspector || isProductModalOpen);
 
   useEffect(() => {
     if (mapObj.current) return;
@@ -169,7 +165,6 @@ function App() {
   // Pan the map when the selected place changes via routing
   useEffect(() => {
     if (!mapObj.current || !selectedPlace) return;
-    setIsProductModalOpen(false);
     panTo(selectedPlace.coords, { offsetForInspector: true });
   }, [selectedId]);
 
@@ -249,27 +244,6 @@ function App() {
               key={selectedPlace.id}
               place={selectedPlace}
               onClose={() => navigate(closePath, { replace: true })}
-              onOpenProduct={() => setIsProductModalOpen(true)}
-            />
-          )}
-        </AnimatePresence>
-
-        {/* Product modal (inline/pip) */}
-        <AnimatePresence>
-          {shouldShowProductModal && (
-            <ProductDetails
-              place={selectedPlace}
-              onClose={() => {
-                if (allowInspector) {
-                  setIsProductModalOpen(false);
-                  return;
-                }
-                setIsProductModalOpen(false);
-                navigate(closePath, { replace: true });
-              }}
-              position="modal"
-              relatedSourceItems={places}
-              onSelectRelated={(item) => navigate(`/place/${item.id}`)}
             />
           )}
         </AnimatePresence>
