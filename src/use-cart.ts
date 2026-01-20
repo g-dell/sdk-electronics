@@ -10,10 +10,45 @@ type CartWidgetState = {
 
 // Chiave specifica per il carrello condiviso tra widget (diversa da electronics-shop)
 const CART_STATE_KEY = "sharedCartItems";
+const CART_STORAGE_KEY = "sharedCartItemsBackup";
 
 const createDefaultCartState = (): CartWidgetState => ({
   items: [],
 });
+
+function readCartBackup(): CartWidgetState | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.sessionStorage?.getItem(CART_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as CartWidgetState;
+    if (parsed && Array.isArray(parsed.items)) {
+      console.debug("[cart] backup read", { items: parsed.items.length });
+      return parsed;
+    }
+  } catch {
+    // ignore invalid storage
+  }
+  return null;
+}
+
+function writeCartBackup(state: CartWidgetState) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.sessionStorage?.setItem(CART_STORAGE_KEY, JSON.stringify(state));
+    console.debug("[cart] backup write", {
+      items: Array.isArray(state.items) ? state.items.length : 0,
+    });
+  } catch {
+    // ignore storage failures
+  }
+}
 
 /**
  * Hook per gestire il carrello condiviso tra tutti i widget
@@ -50,6 +85,11 @@ export function useCart() {
         }
       }
     }
+
+    const backup = readCartBackup();
+    if (backup) {
+      return backup;
+    }
     
     return null;
   }, [widgetStateGlobal]);
@@ -72,7 +112,7 @@ export function useCart() {
     }
     
     // Altrimenti parte sempre vuoto
-    return createDefaultCartState();
+    return readCartBackup() ?? createDefaultCartState();
   });
 
   // Ref per tracciare se stiamo aggiornando lo stato localmente (per evitare loop)
@@ -93,6 +133,10 @@ export function useCart() {
         const currentItemsStr = JSON.stringify(currentItems);
         const globalItemsStr = JSON.stringify(globalItems);
         if (currentItemsStr !== globalItemsStr) {
+          console.debug("[cart] sync from widgetState", {
+            currentItems: currentItems.length,
+            globalItems: globalItems.length,
+          });
           // IMPORTANTE: Se lo stato globale ha items e quello locale è vuoto, usa sempre quello globale
           // Se lo stato locale ha items e quello globale è vuoto, mantieni quello locale (non sovrascrivere)
           if (globalItems.length > 0 && currentItems.length === 0) {
@@ -146,6 +190,10 @@ export function useCart() {
         setCartState((prev) => {
           const prevItems = Array.isArray(prev?.items) ? prev.items : [];
           if (JSON.stringify(prevItems) !== JSON.stringify(currentGlobalItems)) {
+            console.debug("[cart] restore from global", {
+              globalItems: currentGlobalItems.length,
+            });
+            writeCartBackup(currentGlobalCart || createDefaultCartState());
             return currentGlobalCart || createDefaultCartState();
           }
           return prev;
@@ -158,10 +206,15 @@ export function useCart() {
       const cartStateStr = JSON.stringify(cartState);
       if (currentGlobalCartStr !== cartStateStr) {
         isUpdatingLocalRef.current = true;
+        console.debug("[cart] write widgetState", {
+          localItems: localItems.length,
+          globalItems: currentGlobalItems.length,
+        });
         const newState = {
           ...currentGlobalState,
           [CART_STATE_KEY]: cartState,
         };
+        writeCartBackup(cartState);
         void window.openai.setWidgetState(newState).then(() => {
           // Reset il flag dopo che setWidgetState è completato
           // Usa setTimeout per dare tempo all'evento di propagarsi e agli altri widget di reagire
