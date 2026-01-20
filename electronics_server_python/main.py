@@ -2051,6 +2051,28 @@ def _select_product_by_price(
     return sorted_products[0] if sorted_products else None
 
 
+def _select_products_by_price(
+    products: List[Dict[str, Any]],
+    preference: str,
+    limit: int,
+    seen_ids: set[str],
+) -> List[Dict[str, Any]]:
+    if not products or limit <= 0:
+        return []
+    sorted_products = _sort_products_by_price(products, preference)
+    selected: List[Dict[str, Any]] = []
+    for product in sorted_products:
+        product_id = str(product.get("id", ""))
+        if product_id and product_id in seen_ids:
+            continue
+        if product_id:
+            seen_ids.add(product_id)
+        selected.append(product)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
 def _build_solution_bundle_catalog(
     products: List[Dict[str, Any]],
     price_preference: str,
@@ -2060,27 +2082,25 @@ def _build_solution_bundle_catalog(
     bundle_items: List[Dict[str, Any]] = []
     seen_ids: set[str] = set()
     selections = [
-        (CROSS_SELL_TV_KEYWORDS, "tv", True),
-        (SOLUTION_BUNDLE_SOUNDBAR_KEYWORDS, "soundbar", True),
-        (SOLUTION_BUNDLE_SUBWOOFER_KEYWORDS, "subwoofer", False),
-        (CROSS_SELL_LED_KEYWORDS, "led", False),
-        (CROSS_SELL_MOUNT_KEYWORDS, "mount", False),
+        (CROSS_SELL_TV_KEYWORDS, "tv", True, 2),
+        (SOLUTION_BUNDLE_SOUNDBAR_KEYWORDS, "soundbar", True, 2),
+        (SOLUTION_BUNDLE_SUBWOOFER_KEYWORDS, "subwoofer", True, 1),
+        (CROSS_SELL_LED_KEYWORDS, "led", False, 1),
     ]
-    for keywords, _label, exclude_accessories in selections:
+    for keywords, _label, exclude_accessories, limit in selections:
         candidates = _filter_products_for_bundle(
             products,
             keywords,
             BUNDLE_ACCESSORY_EXCLUDE_KEYWORDS if exclude_accessories else None,
         )
-        chosen = _select_product_by_price(candidates, price_preference)
-        if not chosen:
-            continue
-        product_id = str(chosen.get("id", ""))
-        if product_id and product_id in seen_ids:
-            continue
-        if product_id:
-            seen_ids.add(product_id)
-        bundle_items.append(chosen)
+        chosen_items = _select_products_by_price(
+            candidates,
+            price_preference,
+            limit,
+            seen_ids,
+        )
+        if chosen_items:
+            bundle_items.extend(chosen_items)
     return bundle_items
 
 
@@ -3152,25 +3172,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 _map_product_to_cross_sell_item(product) for product in bundle_products
             ]
             places = transform_products_to_places(bundle_products)
-            cart_items = [
-                {"id": product.get("id", ""), "name": product.get("name", "")}
-                for product in bundle_products
-                if product.get("id") and product.get("name")
-            ]
-
             cross_sell = []
-            if cart_items:
-                cross_sell = _get_cross_sell_suggestions_from_db(
-                    [
-                        CrossSellCartItemInput(
-                            id=item["id"],
-                            name=item["name"],
-                        )
-                        for item in cart_items
-                    ],
-                    products,
-                    solution_input.max_results,
-                )
         except Exception as e:
             error_msg = f"Error generating solution bundle: {str(e)}"
             logger.error(error_msg, exc_info=True)
