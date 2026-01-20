@@ -4112,6 +4112,23 @@ mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resou
 # For Streamable HTTP transport, use streamable_http_app()
 app = mcp.sse_app()
 
+# Esegui get_instructions all'avvio del server
+async def _startup_load_instructions() -> None:
+    instructions_path = Path(__file__).resolve().parent.parent / "prompts" / "instructions.md"
+    if not instructions_path.exists():
+        logger.error(f"Startup get_instructions: file not found at {instructions_path}")
+        return
+    try:
+        _ = instructions_path.read_text(encoding="utf-8")
+        logger.info(f"Startup get_instructions: loaded instructions from {instructions_path}")
+    except Exception as exc:
+        logger.error(
+            f"Startup get_instructions: failed to read {instructions_path} - {exc}",
+            exc_info=True,
+        )
+
+app.add_event_handler("startup", _startup_load_instructions)
+
 # Aggiungi middleware CORS all'app (deve essere prima di CSP)
 # Il middleware CORS permette il caricamento di risorse (JS, CSS) da origini diverse
 # necessario quando il widget viene caricato da ChatGPT che ha un'origine diversa
