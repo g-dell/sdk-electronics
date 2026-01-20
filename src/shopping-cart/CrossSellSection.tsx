@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CartItem } from "../types";
+import SafeImage from "../electronics/SafeImage.jsx";
+import { useProxyBaseUrl } from "../use-proxy-base-url";
 import {
   crossSellFallbackCatalog,
   getCartCategoryIntent,
@@ -121,6 +123,7 @@ function CrossSellCard({
 }) {
   const tagLabel = getCrossSellTagLabel(item.tags);
   const hasImage = Boolean(item.imageUrl);
+  const proxyBaseUrl = useProxyBaseUrl();
 
   return (
     <div className="flex flex-col rounded-2xl border border-black/10 bg-white/90 p-3 shadow-sm">
@@ -135,11 +138,11 @@ function CrossSellCard({
       <div className="mt-3 flex items-center gap-3">
         <div className="h-14 w-14 overflow-hidden rounded-xl border border-black/10 bg-[#f7f3ef]">
           {hasImage ? (
-            <img
+            <SafeImage
               src={item.imageUrl}
               alt={item.name}
               className="h-full w-full object-cover"
-              loading="lazy"
+              proxyBaseUrl={proxyBaseUrl}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-black/40">
@@ -192,6 +195,7 @@ export default function CrossSellSection({
   const [isLoading, setIsLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<CrossSellItem[]>([]);
   const impressionKeyRef = useRef("");
+  const displayedSuggestions = suggestions.slice(0, 4);
 
   const categoryIntent = useMemo(
     () => getCartCategoryIntent(cartItems),
@@ -282,7 +286,7 @@ export default function CrossSellSection({
     });
   }, [categoryIntent.categories, isLoading, suggestions]);
 
-  if (!isLoading && suggestions.length === 0) {
+  if (!isLoading && displayedSuggestions.length === 0) {
     return null;
   }
 
@@ -299,7 +303,7 @@ export default function CrossSellSection({
           ? Array.from({ length: 4 }).map((_, index) => (
               <CrossSellCardSkeleton key={index} index={index} />
             ))
-          : suggestions.map((item, index) => (
+          : displayedSuggestions.map((item, index) => (
               <CrossSellCard
                 key={item.sku}
                 item={item}

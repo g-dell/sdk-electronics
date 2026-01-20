@@ -193,7 +193,7 @@ const getRelatedItems = (current: CartItem, items: CartItem[]) => {
 };
 
 const getItemPrice = (item: CartItem) => {
-  const rawPrice = (item as Record<string, unknown>).prices;
+  const rawPrice = (item as Record<string, unknown>).price;
   if (typeof rawPrice === "number" && Number.isFinite(rawPrice)) {
     return rawPrice;
   }

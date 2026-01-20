@@ -6,6 +6,8 @@ import { AvocadoIcon, BreadIcon, EggIcon, JarIcon, TomatoIcon } from "./icons";
 import CrossSellSection from "./CrossSellSection";
 import type { CartItem } from "../types";
 import ProductDetails from "../utils/ProductDetails";
+import SafeImage from "../electronics/SafeImage.jsx";
+import { useProxyBaseUrl } from "../use-proxy-base-url";
 
 const iconMatchers = [
   { keywords: ["egg", "eggs"], Icon: EggIcon },
@@ -19,6 +21,7 @@ function App() {
   // Questo garantisce che il carrello mostri SOLO i prodotti aggiunti tramite i pulsanti "Aggiungi al carrello"
   // Ignora completamente qualsiasi altro dato in widgetState (es. da electronics-shop)
   const { cartItems, addToCart, removeFromCart, clearCart } = useCart();
+  const proxyBaseUrl = useProxyBaseUrl();
   const [selectedItem, setSelectedItem] = useState<CartItem | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -230,15 +233,22 @@ function App() {
   }
 
   async function handleCheckout() {
+    console.info("[checkout] start", {
+      items: cartItems.length,
+      hasEmail: Boolean(customerEmail.trim()),
+    });
     if (!window.openai?.callTool) {
       setCheckoutError("callTool non disponibile in questo contesto.");
+      console.warn("[checkout] callTool unavailable");
       return;
     }
     if (cartItems.length === 0) {
+      console.warn("[checkout] empty cart");
       return;
     }
     if (!customerEmail.trim()) {
       setCheckoutError("Inserisci un'email per continuare.");
+      console.warn("[checkout] missing email");
       return;
     }
     const invalidItem = cartItems.find(
@@ -246,12 +256,13 @@ function App() {
     );
     if (invalidItem) {
       setCheckoutError("Impossibile avviare il pagamento: alcuni articoli non hanno un prezzo valido.");
+      console.warn("[checkout] invalid item", invalidItem);
       return;
     }
     setIsCheckingOut(true);
     setCheckoutError(null);
     try {
-      const createResponse = await window.openai.callTool("checkout_create_session", {
+      const checkoutPayload = {
         items: cartItems.map((item) => ({
           name: item.name,
           quantity: item.quantity ?? 1,
@@ -261,7 +272,16 @@ function App() {
         currency: "eur",
         buyer_email: customerEmail.trim(),
         shared_payment_token: "test_spt_visa",
+      };
+      console.info("[checkout] create_session payload", {
+        items: checkoutPayload.items.length,
+        currency: checkoutPayload.currency,
+        buyerEmail: checkoutPayload.buyer_email,
       });
+      const createResponse = await window.openai.callTool(
+        "checkout_create_session",
+        checkoutPayload
+      );
       console.log("[checkout_create_session]", createResponse);
 
       const createStructured = extractStructuredContent(createResponse);
@@ -274,6 +294,10 @@ function App() {
           ? createStructured.payment_intent_id
           : null;
 
+      console.info("[checkout] create_session ids", {
+        sessionId,
+        paymentIntentId,
+      });
       if (!sessionId && !paymentIntentId) {
         throw new Error(
           `Risposta create_session non valida: ${JSON.stringify(createResponse)}`
@@ -305,6 +329,7 @@ function App() {
         status = extractStatus(confirmResponse);
       }
 
+      console.info("[checkout] final status", { status });
       if (status === "succeeded") {
         const itemsSnapshot = cartItems.map((item) => {
           const quantity = item.quantity ?? 1;
@@ -340,14 +365,17 @@ function App() {
         clearCart();
         setShowBillingModal(false);
         setCheckoutStatus("success");
+        console.info("[checkout] success");
       } else {
         setCheckoutStatus("cancel");
         throw new Error("Pagamento non riuscito.");
       }
     } catch (error) {
+      console.error("[checkout] error", error);
       setCheckoutError(error instanceof Error ? error.message : "Errore durante il checkout.");
     } finally {
       setIsCheckingOut(false);
+      console.info("[checkout] end");
     }
   }
 
@@ -369,11 +397,20 @@ function App() {
           }}
         >
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm">
-              {(() => {
-                const Icon = getIconForItem(item.name);
-                return <Icon className="h-6 w-6" />;
-              })()}
+            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
+              {item.image ? (
+                <SafeImage
+                  src={item.image}
+                  alt={item.name}
+                  className="h-full w-full object-cover"
+                  proxyBaseUrl={proxyBaseUrl}
+                />
+              ) : (
+                (() => {
+                  const Icon = getIconForItem(item.name);
+                  return <Icon className="h-6 w-6" />;
+                })()
+              )}
             </div>
             <div>
               <p className="text-sm font-semibold text-black">{item.name}</p>

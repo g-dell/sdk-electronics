@@ -73,7 +73,11 @@ function SliceCard({ place, index, onCardClick }) {
             size="sm"
             onClick={handleAddToCart}
             disabled={inCart}
-            className="w-full"
+            className={
+              inCart
+                ? "w-full"
+                : "w-full !bg-sky-200 !text-slate-900 hover:!bg-sky-300"
+            }
           >
             <ShoppingCart className="h-4 w-4 mr-2" />
             {inCart ? "Nel carrello" : "Aggiungi al carrello"}

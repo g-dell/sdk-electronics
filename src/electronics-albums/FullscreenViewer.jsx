@@ -19,6 +19,7 @@ export default function FullscreenViewer({ album }) {
 
   const photo = album?.photos?.[index];
   const photoId = photo?.id || `album-${album.id}-photo-${index}`;
+  const inCart = isInCart(photoId);
 
   const handleAddToCart = () => {
     if (photo) {
@@ -62,12 +63,15 @@ export default function FullscreenViewer({ album }) {
                     variant="solid"
                     size="md"
                     onClick={handleAddToCart}
-                    disabled={isInCart(photoId)}
+                    disabled={inCart}
+                    className={
+                      inCart
+                        ? undefined
+                        : "!bg-sky-200 !text-slate-900 hover:!bg-sky-300"
+                    }
                   >
                     <ShoppingCart className="h-4 w-4 mr-2" />
-                    {isInCart(photoId)
-                      ? "Nel carrello"
-                      : "Aggiungi al carrello"}
+                    {inCart ? "Nel carrello" : "Aggiungi al carrello"}
                   </Button>
                 </div>
               </>

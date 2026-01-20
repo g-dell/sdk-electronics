@@ -463,17 +463,17 @@ def rank_products_by_criteria(
     def get_price(product: Dict[str, Any]) -> float:
         """Estrae il prezzo dal prodotto."""
         price_num = 0
-        if "prices" in product:
-            prices_value = product.get("prices")
-            if isinstance(prices_value, (int, float)):
-                price_num = prices_value
-            elif isinstance(prices_value, str):
+        if "price" in product:
+            price_value = product.get("price")
+            if isinstance(price_value, (int, float)):
+                price_num = price_value
+            elif isinstance(price_value, str):
                 try:
-                    price_num = float(prices_value)
+                    price_num = float(price_value)
                 except ValueError:
                     price_num = 0
-            elif isinstance(prices_value, dict):
-                price_num = prices_value.get("amountMax", 0) or prices_value.get("amountMin", 0)
+            elif isinstance(price_value, dict):
+                price_num = price_value.get("amountMax", 0) or price_value.get("amountMin", 0)
         return float(price_num) if price_num else 0.0
     
     def calculate_relevance_score(product: Dict[str, Any]) -> tuple:
@@ -541,6 +541,23 @@ def rank_products_by_criteria(
             if matched_keywords > 0:
                 # Bonus per corrispondenza keyword (riduce lo score)
                 score = max(0, score - (matched_keywords * 5))
+
+        # 5. Priorità per home theater: prima TV/subwoofer/soundbar, poi accessori
+        if _has_home_theater_intent(keywords):
+            combined_text = _normalize_text(
+                f"{product.get('name', '')} {' '.join(_extract_product_categories(product))}"
+            )
+            if _is_accessory_product(product, BUNDLE_ACCESSORY_EXCLUDE_KEYWORDS):
+                score += 120
+
+            if any(kw in combined_text for kw in CROSS_SELL_TV_KEYWORDS):
+                score = max(0, score - 40)
+            if any(kw in combined_text for kw in SOLUTION_BUNDLE_SUBWOOFER_KEYWORDS):
+                score = max(0, score - 25)
+            if any(kw in combined_text for kw in SOLUTION_BUNDLE_SOUNDBAR_KEYWORDS):
+                score = max(0, score - 20)
+            if any(kw in combined_text for kw in CROSS_SELL_AUDIO_KEYWORDS):
+                score = max(0, score - 10)
         
         # Restituisci tupla per ordinamento stabile (score, prezzo, nome)
         return (score, -get_price(product), product.get("name", ""))
@@ -625,7 +642,7 @@ def transform_products_to_places(
     - id, name, coords (lat, lon), description, city, rating, price (stringa), thumbnail, stock
     
     I prodotti dal database prodotti_xeel_shop hanno:
-    - id, name, prices, descrizione_prodotto, imageURLs, 
+    - id, name, price, descrizione_prodotto, imageURLs, 
       voto_prodotto_1_5, categories, primaryCategories, stock
     
     Questa funzione mappa i campi dal database e genera valori default per campi mancanti 
@@ -637,12 +654,12 @@ def transform_products_to_places(
     Mapping colonne DB -> places:
     - id -> id
     - name -> name  
-    - prices -> price (convertito in $/$$/$$$)
+    - price -> price (convertito in $/$$/$$$)
     - descrizione_prodotto -> description
     - imageURLs -> thumbnail
     - voto_prodotto_1_5 -> rating (con fallback a 4.5)
     - stock -> stock (numero prodotti disponibili)
-    - coords, city -> generati automaticamente (default San Francisco)
+    - coords, city -> generati automaticamente (default Cascina, PI)
     
     Args:
         products: Lista di prodotti dal database (dizionari Python)
@@ -658,34 +675,21 @@ def transform_products_to_places(
     if criteria:
         products = rank_products_by_criteria(products, criteria)
     
-    # Coordinate di default per San Francisco (dove sono i place attuali in markers.json)
-    # Distribuite in diverse zone della città per varietà visiva
+    # Coordinate di default per Cascina (PI) - posizione statica del negozio
     default_coords = [
-        [-122.4098, 37.8001],  # North Beach
-        [-122.4093, 37.7990],  # North Beach
-        [-122.4255, 37.7613],  # Mission
-        [-122.4388, 37.7775],  # Alamo Square
-        [-122.4077, 37.7990],  # North Beach
-        [-122.4097, 37.7992],  # North Beach
-        [-122.4380, 37.7722],  # Lower Haight
-        [-122.4123, 37.7899],  # Nob Hill
-        [-122.4135, 37.7805],  # SoMa
-        [-122.4019, 37.7818],  # Yerba Buena
-        [-122.4194, 37.7749],  # Mission
-        [-122.4313, 37.7849],  # Western Addition
+        [10.49197675545435, 43.68345261138975],
     ]
     
     # Città di default
     default_cities = [
-        "San Francisco",
-        "North Beach",
-        "Mission",
-        "Alamo Square",
-        "SoMa",
-        "Nob Hill",
-        "Lower Haight",
-        "Yerba Buena",
+        "Cascina (PI)",
     ]
+    
+    # Immagine di fallback per il negozio
+    default_thumbnail_url = (
+        "https://2017.gonews.it/wp-content/uploads/2014/05/"
+        "cascina_navacchio_polo_tecnologico_quarto_lotto.jpg"
+    )
     
     places = []
     seen_ids = set()  # Traccia gli ID già visti per evitare duplicati
@@ -718,20 +722,20 @@ def transform_products_to_places(
                 f"Using unique ID: '{product_id}' for product '{product.get('name', 'Unknown')}'"
             )
         
-        # Ottieni il prezzo dalla colonna prices
+        # Ottieni il prezzo dalla colonna price
         # Può essere numero, stringa numerica o dict (amountMax/amountMin)
         price_num = 0
-        if "prices" in product:
-            prices_value = product.get("prices")
-            if isinstance(prices_value, (int, float)):
-                price_num = prices_value
-            elif isinstance(prices_value, str):
+        if "price" in product:
+            price_value = product.get("price")
+            if isinstance(price_value, (int, float)):
+                price_num = price_value
+            elif isinstance(price_value, str):
                 try:
-                    price_num = float(prices_value)
+                    price_num = float(price_value)
                 except ValueError:
                     price_num = 0
-            elif isinstance(prices_value, dict):
-                price_num = prices_value.get("amountMax", 0) or prices_value.get("amountMin", 0)
+            elif isinstance(price_value, dict):
+                price_num = price_value.get("amountMax", 0) or price_value.get("amountMin", 0)
         # Converti prezzo in formato stringa in euro (es. 34,59€)
         if isinstance(price_num, (int, float)) and price_num > 0:
             price_str = f"{price_num:.2f}".replace(".", ",") + "€"
@@ -1068,9 +1072,13 @@ class CORSMiddleware(BaseHTTPMiddleware):
             
             return response
         
-        # Per risposte SSE (/mcp endpoint), passa direttamente senza modificare headers
+        # Per risposte SSE/streaming, passa direttamente senza modificare headers
         # Le risposte SSE sono gestite direttamente da sse-starlette e non seguono il normale flusso HTTP
-        if request.url.path.startswith("/mcp") or request.url.path == "/sse":
+        if (
+            request.url.path.startswith("/mcp")
+            or request.url.path == "/sse"
+            or request.url.path.startswith("/messages")
+        ):
             return await call_next(request)
         
         # Per tutte le altre richieste, processa normalmente e aggiungi header CORS
@@ -1109,9 +1117,13 @@ class CSPMiddleware(BaseHTTPMiddleware):
     """
     
     async def dispatch(self, request: Request, call_next):
-        # Per risposte SSE (/mcp endpoint), passa direttamente senza modificare headers
+        # Per risposte SSE/streaming, passa direttamente senza modificare headers
         # Le risposte SSE sono gestite direttamente da sse-starlette e non seguono il normale flusso HTTP
-        if request.url.path.startswith("/mcp") or request.url.path == "/sse":
+        if (
+            request.url.path.startswith("/mcp")
+            or request.url.path == "/sse"
+            or request.url.path.startswith("/messages")
+        ):
             return await call_next(request)
         
         response = await call_next(request)
@@ -1515,6 +1527,35 @@ CROSS_SELL_INPUT_SCHEMA: Dict[str, Any] = {
     "additionalProperties": False,
 }
 
+SOLUTION_BUNDLE_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "goal": {
+            "type": "string",
+            "description": "Obiettivo del bundle (es. 'home theater').",
+        },
+        "pricePreference": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "description": "Preferenza prezzo: low o medium o high.",
+        },
+        "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "description": "Numero massimo di suggerimenti cross-sell (1-8).",
+        },
+        "maxResults": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "description": "Numero massimo di suggerimenti cross-sell (1-8).",
+        },
+    },
+    "required": ["goal"],
+    "additionalProperties": False,
+}
+
 
 class CheckoutItemInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -1630,6 +1671,13 @@ class CrossSellRequestInput(BaseModel):
     max_results: int = Field(default=8, ge=1, le=8, alias="maxResults")
 
 
+class SolutionBundleRequestInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    goal: str = Field(min_length=1)
+    price_preference: str = Field(default="low", alias="pricePreference")
+    max_results: int = Field(default=8, ge=1, le=8, alias="maxResults")
+
+
 CROSS_SELL_PC_KEYWORDS = [
     "pc",
     "laptop",
@@ -1641,10 +1689,66 @@ CROSS_SELL_PC_KEYWORDS = [
     "gaming",
 ]
 CROSS_SELL_TV_KEYWORDS = ["tv", "televisore", "television", "smart tv", "oled", "qled"]
+CROSS_SELL_AUDIO_KEYWORDS = [
+    "soundbar",
+    "subwoofer",
+    "home theater",
+    "home-theater",
+    "surround",
+    "dolby",
+    "sound system",
+    "speaker",
+]
+CROSS_SELL_LED_KEYWORDS = ["led", "ambient", "strip", "lighting", "backlight", "back light"]
+CROSS_SELL_MOUNT_KEYWORDS = ["support", "staffa", "mount", "bracket", "stand"]
+SOLUTION_BUNDLE_GOAL_KEYWORDS = [
+    "home theater",
+    "home theatre",
+    "home-theater",
+    "home-theatre",
+    "home cinema",
+    "cinema",
+]
+SOLUTION_BUNDLE_SOUNDBAR_KEYWORDS = ["soundbar"]
+SOLUTION_BUNDLE_SUBWOOFER_KEYWORDS = ["subwoofer"]
+BUNDLE_ACCESSORY_EXCLUDE_KEYWORDS = [
+    "accessor",
+    "supporto",
+    "staff",
+    "mount",
+    "bracket",
+    "stand",
+    "base",
+    "kit",
+    "panno",
+    "microfibra",
+    "clean",
+    "pulizia",
+    "cavo",
+    "hdmi",
+    "telecomand",
+    "remote",
+    "led",
+    "strip",
+    "lighting",
+    "backlight",
+    "wall",
+]
+BUNDLE_ACCESSORY_EXCLUDE_KEYWORDS = list(
+    {
+        *BUNDLE_ACCESSORY_EXCLUDE_KEYWORDS,
+        *CROSS_SELL_MOUNT_KEYWORDS,
+        *CROSS_SELL_LED_KEYWORDS,
+    }
+)
 
 CROSS_SELL_CLEANING_TAG = "screen-cleaning"
 CROSS_SELL_POPULAR_TAG = "popular"
 CROSS_SELL_RECOMMENDED_TAG = "recommended"
+CROSS_SELL_SOUNDBAR_TAG = "soundbar"
+CROSS_SELL_SUBWOOFER_TAG = "subwoofer"
+CROSS_SELL_LED_TAG = "led"
+CROSS_SELL_MOUNT_TAG = "mount"
 
 CROSS_SELL_FALLBACK_CATALOG: List[Dict[str, Any]] = [
     {
@@ -1786,14 +1890,22 @@ def _get_cart_category_intent(
         "tv" in explicit_categories
         or any(keyword in tokens or keyword in normalized_text for keyword in CROSS_SELL_TV_KEYWORDS)
     )
+    has_audio = any(
+        keyword in tokens or keyword in normalized_text for keyword in CROSS_SELL_AUDIO_KEYWORDS
+    )
+    has_led = any(keyword in tokens or keyword in normalized_text for keyword in CROSS_SELL_LED_KEYWORDS)
 
     categories: List[str] = []
     if has_pc:
         categories.append("pc")
     if has_tv:
         categories.append("tv")
+    if has_audio:
+        categories.append("audio")
+    if has_led:
+        categories.append("led")
 
-    return categories, has_pc or has_tv
+    return categories, has_pc or has_tv or has_audio or has_led
 
 
 def _get_cart_identifiers(cart_items: List[CrossSellCartItemInput]) -> tuple[set[str], set[str]]:
@@ -1851,16 +1963,16 @@ def _product_has_category_keywords(product: Dict[str, Any], keywords: List[str])
 
 
 def _extract_price_from_product(product: Dict[str, Any]) -> float:
-    prices_value = product.get("prices")
-    if isinstance(prices_value, (int, float)):
-        return float(prices_value)
-    if isinstance(prices_value, str):
+    price_value = product.get("price")
+    if isinstance(price_value, (int, float)):
+        return float(price_value)
+    if isinstance(price_value, str):
         try:
-            return float(prices_value)
+            return float(price_value)
         except ValueError:
             return 0.0
-    if isinstance(prices_value, dict):
-        candidate = prices_value.get("amountMax", 0) or prices_value.get("amountMin", 0)
+    if isinstance(price_value, dict):
+        candidate = price_value.get("amountMax", 0) or price_value.get("amountMin", 0)
         try:
             return float(candidate)
         except (ValueError, TypeError):
@@ -1875,6 +1987,175 @@ def _extract_image_url(product: Dict[str, Any]) -> str:
     if isinstance(images, str):
         return images
     return ""
+
+
+def _filter_products_by_name_keywords(
+    products: List[Dict[str, Any]],
+    keywords: List[str],
+) -> List[Dict[str, Any]]:
+    if not products or not keywords:
+        return []
+    normalized_keywords = [kw.lower().strip() for kw in keywords if kw]
+    filtered = []
+    for product in products:
+        name = _normalize_text(str(product.get("name", "")))
+        if not name:
+            continue
+        if any(keyword in name for keyword in normalized_keywords):
+            filtered.append(product)
+    return filtered
+
+
+_STRICT_TYPE_KEYWORDS = {
+    "laptop",
+    "laptops",
+    "notebook",
+    "ultrabook",
+}
+
+
+def _filter_products_by_strict_type_keywords(
+    products: List[Dict[str, Any]],
+    keywords: List[str],
+) -> List[Dict[str, Any]]:
+    if not products or not keywords:
+        return products
+
+    normalized_keywords = [_normalize_text(kw) for kw in keywords if kw]
+    strict_matches = [
+        type_kw
+        for type_kw in _STRICT_TYPE_KEYWORDS
+        if any(type_kw in keyword for keyword in normalized_keywords)
+    ]
+    if not strict_matches:
+        return products
+
+    filtered = []
+    for product in products:
+        combined_text = _normalize_text(
+            f"{product.get('name', '')} {' '.join(_extract_product_categories(product))}"
+        )
+        if any(type_kw in combined_text for type_kw in strict_matches):
+            filtered.append(product)
+
+    return filtered
+
+
+def _has_home_theater_intent(keywords: List[str]) -> bool:
+    if not keywords:
+        return False
+    normalized = _normalize_text(" ".join([str(kw) for kw in keywords if kw]))
+    return any(_normalize_text(goal) in normalized for goal in SOLUTION_BUNDLE_GOAL_KEYWORDS)
+
+
+def _is_accessory_product(
+    product: Dict[str, Any],
+    accessory_keywords: List[str],
+) -> bool:
+    if not accessory_keywords:
+        return False
+    normalized_name = _normalize_text(str(product.get("name", "")))
+    normalized_categories = _normalize_text(" ".join(_extract_product_categories(product)))
+    combined = f"{normalized_name} {normalized_categories}".strip()
+    return any(keyword in combined for keyword in accessory_keywords)
+
+
+def _filter_products_for_bundle(
+    products: List[Dict[str, Any]],
+    include_keywords: List[str],
+    accessory_exclusions: List[str] | None = None,
+) -> List[Dict[str, Any]]:
+    candidates = _filter_products_by_name_keywords(products, include_keywords)
+    if not candidates or not accessory_exclusions:
+        return candidates
+    exclusions = [kw.lower().strip() for kw in accessory_exclusions if kw]
+    filtered = [
+        product
+        for product in candidates
+        if not _is_accessory_product(product, exclusions)
+    ]
+    return filtered or candidates
+
+
+def _sort_products_by_price(
+    products: List[Dict[str, Any]],
+    preference: str,
+) -> List[Dict[str, Any]]:
+    if not products:
+        return []
+    preference = (preference or "low").lower()
+    scored = []
+    for product in products:
+        price = _extract_price_from_product(product)
+        scored.append((price, product))
+    scored.sort(key=lambda item: item[0] if item[0] > 0 else float("inf"))
+    if preference == "high":
+        scored.reverse()
+    return [product for _price, product in scored]
+
+
+def _select_product_by_price(
+    products: List[Dict[str, Any]],
+    preference: str,
+) -> Dict[str, Any] | None:
+    sorted_products = _sort_products_by_price(products, preference)
+    for product in sorted_products:
+        if _extract_price_from_product(product) > 0:
+            return product
+    return sorted_products[0] if sorted_products else None
+
+
+def _select_products_by_price(
+    products: List[Dict[str, Any]],
+    preference: str,
+    limit: int,
+    seen_ids: set[str],
+) -> List[Dict[str, Any]]:
+    if not products or limit <= 0:
+        return []
+    sorted_products = _sort_products_by_price(products, preference)
+    selected: List[Dict[str, Any]] = []
+    for product in sorted_products:
+        product_id = str(product.get("id", ""))
+        if product_id and product_id in seen_ids:
+            continue
+        if product_id:
+            seen_ids.add(product_id)
+        selected.append(product)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def _build_solution_bundle_catalog(
+    products: List[Dict[str, Any]],
+    price_preference: str,
+) -> List[Dict[str, Any]]:
+    if not products:
+        return []
+    bundle_items: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    selections = [
+        (CROSS_SELL_TV_KEYWORDS, "tv", True, 2),
+        (SOLUTION_BUNDLE_SOUNDBAR_KEYWORDS, "soundbar", True, 2),
+        (SOLUTION_BUNDLE_SUBWOOFER_KEYWORDS, "subwoofer", True, 1),
+        (CROSS_SELL_LED_KEYWORDS, "led", True, 1),
+    ]
+    for keywords, _label, exclude_accessories, limit in selections:
+        candidates = _filter_products_for_bundle(
+            products,
+            keywords,
+            BUNDLE_ACCESSORY_EXCLUDE_KEYWORDS if exclude_accessories else None,
+        )
+        chosen_items = _select_products_by_price(
+            candidates,
+            price_preference,
+            limit,
+            seen_ids,
+        )
+        if chosen_items:
+            bundle_items.extend(chosen_items)
+    return bundle_items
 
 
 def _resolve_cart_products(
@@ -1914,20 +2195,29 @@ def _detect_cart_intent_from_products(
             [" ".join(_extract_product_categories(product)) for product in cart_products]
         )
     )
+    normalized_names = _normalize_text(
+        " ".join([str(product.get("name", "")) for product in cart_products])
+    )
 
     has_tv = any(keyword in normalized_categories for keyword in ["tv", "televis"])
     has_pc = any(
         keyword in normalized_categories
         for keyword in ["laptop", "computer", "desktop", "notebook", "pc"]
     )
+    has_audio = any(keyword in normalized_names for keyword in CROSS_SELL_AUDIO_KEYWORDS)
+    has_led = any(keyword in normalized_names for keyword in CROSS_SELL_LED_KEYWORDS)
 
     categories: List[str] = []
     if has_pc:
         categories.append("pc")
     if has_tv:
         categories.append("tv")
+    if has_audio:
+        categories.append("audio")
+    if has_led:
+        categories.append("led")
 
-    return categories, has_pc or has_tv
+    return categories, has_pc or has_tv or has_audio or has_led
 
 
 def _map_product_to_cross_sell_item(product: Dict[str, Any]) -> Dict[str, Any]:
@@ -1937,6 +2227,8 @@ def _map_product_to_cross_sell_item(product: Dict[str, Any]) -> Dict[str, Any]:
     price = _extract_price_from_product(product)
     primary_categories = _extract_product_categories(product)
     normalized_categories = _normalize_text(" ".join(primary_categories))
+    normalized_name = _normalize_text(str(name))
+    normalized_text = _normalize_text(f"{normalized_name} {normalized_categories}")
 
     tags: List[str] = []
     if "panno" in normalized_categories or "clean" in normalized_categories:
@@ -1945,16 +2237,35 @@ def _map_product_to_cross_sell_item(product: Dict[str, Any]) -> Dict[str, Any]:
         tags.append(CROSS_SELL_POPULAR_TAG)
     if "telecomand" in normalized_categories or "caric" in normalized_categories:
         tags.append(CROSS_SELL_RECOMMENDED_TAG)
+    if "soundbar" in normalized_text:
+        tags.append(CROSS_SELL_SOUNDBAR_TAG)
+    if "subwoofer" in normalized_text:
+        tags.append(CROSS_SELL_SUBWOOFER_TAG)
+    if any(keyword in normalized_text for keyword in CROSS_SELL_LED_KEYWORDS):
+        tags.append(CROSS_SELL_LED_TAG)
+    if any(keyword in normalized_text for keyword in CROSS_SELL_MOUNT_KEYWORDS):
+        tags.append(CROSS_SELL_MOUNT_TAG)
 
     compatible_with: List[str] = []
     if "tv" in normalized_categories or "televis" in normalized_categories:
         compatible_with.append("tv")
     if any(token in normalized_categories for token in ["computer", "laptop", "desktop", "pc"]):
         compatible_with.append("pc")
+    if any(tag in tags for tag in [CROSS_SELL_SOUNDBAR_TAG, CROSS_SELL_SUBWOOFER_TAG, CROSS_SELL_LED_TAG, CROSS_SELL_MOUNT_TAG]):
+        if "tv" not in compatible_with:
+            compatible_with.append("tv")
 
     priority = 60
     if CROSS_SELL_CLEANING_TAG in tags:
         priority = 90
+    elif CROSS_SELL_SOUNDBAR_TAG in tags:
+        priority = 88
+    elif CROSS_SELL_SUBWOOFER_TAG in tags:
+        priority = 86
+    elif CROSS_SELL_MOUNT_TAG in tags:
+        priority = 82
+    elif CROSS_SELL_LED_TAG in tags:
+        priority = 80
     elif "cavi" in normalized_categories:
         priority = 82
     elif "telecomand" in normalized_categories:
@@ -1996,19 +2307,32 @@ def _get_cross_sell_suggestions_from_db(
         "hub",
         "accessori",
     ]
+    audio_keywords = CROSS_SELL_AUDIO_KEYWORDS
+    led_keywords = CROSS_SELL_LED_KEYWORDS
+    mount_keywords = CROSS_SELL_MOUNT_KEYWORDS
 
     accessory_products: List[Dict[str, Any]] = []
     for product in products:
         normalized_categories = _normalize_text(" ".join(_extract_product_categories(product)))
-        if "tv" in categories and any(keyword in normalized_categories for keyword in tv_keywords):
+        normalized_name = _normalize_text(str(product.get("name", "")))
+        normalized_text = _normalize_text(f"{normalized_name} {normalized_categories}")
+        if "tv" in categories and any(keyword in normalized_text for keyword in tv_keywords):
             accessory_products.append(product)
-        elif "pc" in categories and any(keyword in normalized_categories for keyword in pc_keywords):
+        elif "pc" in categories and any(keyword in normalized_text for keyword in pc_keywords):
+            accessory_products.append(product)
+        elif "tv" in categories and any(
+            keyword in normalized_text for keyword in audio_keywords + led_keywords + mount_keywords
+        ):
+            accessory_products.append(product)
+        elif "audio" in categories and any(
+            keyword in normalized_text for keyword in audio_keywords + mount_keywords
+        ):
             accessory_products.append(product)
 
     catalog = [_map_product_to_cross_sell_item(product) for product in accessory_products]
     catalog = [item for item in catalog if item.get("price", 0) > 0 and item.get("name")]
 
-    suggestions = _get_cross_sell_suggestions(cart_items, catalog)
+    suggestions = _get_cross_sell_suggestions(cart_items, catalog, max_results)
 
     if has_screen_device:
         suggestions = [item for item in suggestions if item.get("sku")]
@@ -2079,7 +2403,29 @@ def _get_cross_sell_suggestions(
 
     if "tv" in categories:
         needs_hdmi = "hdmi" not in normalized_cart_text
+        needs_soundbar = not _has_accessory_keyword(cart_items, ["soundbar"])
+        needs_subwoofer = not _has_accessory_keyword(cart_items, ["subwoofer"])
+        needs_led = not _has_accessory_keyword(
+            cart_items,
+            ["led", "lighting", "ambient", "backlight", "back light"],
+        )
+        needs_mount = not _has_accessory_keyword(
+            cart_items,
+            ["support", "staffa", "mount", "bracket", "stand"],
+        )
         tv_candidates = [item for item in eligible if "tv" in item.get("compatibleWith", [])]
+
+        if needs_soundbar:
+            for item in _sort_by_priority(
+                [item for item in tv_candidates if CROSS_SELL_SOUNDBAR_TAG in (item.get("tags") or [])]
+            )[:1]:
+                push_suggestion(item)
+
+        if needs_subwoofer:
+            for item in _sort_by_priority(
+                [item for item in tv_candidates if CROSS_SELL_SUBWOOFER_TAG in (item.get("tags") or [])]
+            )[:1]:
+                push_suggestion(item)
 
         if needs_hdmi:
             for item in _sort_by_priority(
@@ -2092,14 +2438,24 @@ def _get_cross_sell_suggestions(
         )[:1]:
             push_suggestion(item)
 
-        for item in _sort_by_priority(
-            [
-                item
-                for item in tv_candidates
-                if any(tag in ["tv-mount", "stand"] for tag in (item.get("tags") or []))
-            ]
-        )[:1]:
-            push_suggestion(item)
+        if needs_mount:
+            for item in _sort_by_priority(
+                [
+                    item
+                    for item in tv_candidates
+                    if any(
+                        tag in ["tv-mount", "stand", CROSS_SELL_MOUNT_TAG]
+                        for tag in (item.get("tags") or [])
+                    )
+                ]
+            )[:1]:
+                push_suggestion(item)
+
+        if needs_led:
+            for item in _sort_by_priority(
+                [item for item in tv_candidates if CROSS_SELL_LED_TAG in (item.get("tags") or [])]
+            )[:1]:
+                push_suggestion(item)
 
     category_set = set(categories)
     scored: List[tuple[Dict[str, Any], int]] = []
@@ -2113,6 +2469,12 @@ def _get_cross_sell_suggestions(
         score = int(item.get("priority", 0))
         if has_screen_device and CROSS_SELL_CLEANING_TAG in (item.get("tags") or []):
             score += 15
+        if CROSS_SELL_SOUNDBAR_TAG in (item.get("tags") or []):
+            score += 20
+        if CROSS_SELL_SUBWOOFER_TAG in (item.get("tags") or []):
+            score += 18
+        if CROSS_SELL_LED_TAG in (item.get("tags") or []):
+            score += 6
         if "pc" in categories and "pc" in item.get("compatibleWith", []):
             score += 10
         if "tv" in categories and "tv" in item.get("compatibleWith", []):
@@ -2374,6 +2736,24 @@ async def _list_tools() -> List[types.Tool]:
                 "di accessori consigliati con SKU, nome, prezzo e tags."
             ),
             inputSchema=deepcopy(CROSS_SELL_INPUT_SCHEMA),
+            annotations={
+                "destructiveHint": False,
+                "openWorldHint": False,
+                "readOnlyHint": True,
+            },
+        )
+    )
+
+    tools.append(
+        types.Tool(
+            name="solution_bundle_recommendations",
+            title="Solution Bundle Recommendations",
+            description=(
+                "Crea un bundle soluzione per un obiettivo (es. home theater) scegliendo "
+                "prodotti core dal catalogo e aggiungendo suggerimenti cross-sell."
+            ),
+            inputSchema=deepcopy(SOLUTION_BUNDLE_INPUT_SCHEMA),
+            _meta=_tool_meta(WIDGETS_BY_ID["electronics-list"]),
             annotations={
                 "destructiveHint": False,
                 "openWorldHint": False,
@@ -2725,12 +3105,14 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     suggestions = _get_cross_sell_suggestions(
                         cross_sell_input.cart_items,
                         CROSS_SELL_FALLBACK_CATALOG,
-                    )[: cross_sell_input.max_results]
+                        cross_sell_input.max_results,
+                    )
             else:
                 suggestions = _get_cross_sell_suggestions(
                     cross_sell_input.cart_items,
                     CROSS_SELL_FALLBACK_CATALOG,
-                )[: cross_sell_input.max_results]
+                    cross_sell_input.max_results,
+                )
         except Exception as e:
             error_msg = f"Error generating cross-sell suggestions: {str(e)}"
             logger.error(error_msg, exc_info=True)
@@ -2755,6 +3137,127 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     )
                 ],
                 structuredContent={"suggestions": suggestions},
+            )
+        )
+
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(
+            f"Tool execution completed: tool={tool_name}, success=True, duration={duration:.3f}s"
+        )
+
+        return result
+
+    if tool_name == "solution_bundle_recommendations":
+        try:
+            solution_input = SolutionBundleRequestInput.model_validate(arguments or {})
+        except ValidationError as e:
+            error_msg = f"Invalid input for {tool_name}: {str(e)}"
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        normalized_goal = _normalize_text(solution_input.goal)
+        if not any(keyword in normalized_goal for keyword in SOLUTION_BUNDLE_GOAL_KEYWORDS):
+            error_msg = (
+                "Goal non supportato. Usa un obiettivo come 'home theater'."
+            )
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        price_preference = solution_input.price_preference.lower().strip()
+        if price_preference == "medium":
+            price_preference = "low"
+        if price_preference not in ["low", "high"]:
+            error_msg = "pricePreference deve essere 'low' o 'high'."
+            logger.warning(error_msg)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        try:
+            products = await get_products_from_motherduck()
+            if not products:
+                error_msg = "Nessun prodotto disponibile nel catalogo."
+                logger.warning(error_msg)
+                return types.ServerResult(
+                    types.CallToolResult(
+                        content=[
+                            types.TextContent(
+                                type="text",
+                                text=error_msg,
+                            )
+                        ],
+                        isError=True,
+                    )
+                )
+
+            bundle_products = _build_solution_bundle_catalog(
+                products,
+                price_preference,
+            )
+            bundle_items = [
+                _map_product_to_cross_sell_item(product) for product in bundle_products
+            ]
+            places = transform_products_to_places(bundle_products)
+            cross_sell = []
+        except Exception as e:
+            error_msg = f"Error generating solution bundle: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=error_msg,
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        result = types.ServerResult(
+            types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text="Solution bundle generated.",
+                    )
+                ],
+                structuredContent={
+                    "goal": solution_input.goal,
+                    "pricePreference": price_preference,
+                    "bundleItems": bundle_items,
+                    "crossSell": cross_sell,
+                    "places": places,
+                },
+                _meta=_tool_invocation_meta(WIDGETS_BY_ID["electronics-list"]),
             )
         )
 
@@ -2965,16 +3468,21 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
 
         cart = CheckoutCart(items=checkout_input.items, totals=totals)
 
+        metadata_payload = {
+            "purpose": "acp_demo",
+            "items_count": str(len(checkout_input.items)),
+            "currency": currency,
+            "total_minor": str(totals.grand_total_minor),
+        }
+        logger.info(f"Checkout metadata (stripe): {metadata_payload}")
+
         try:
             pi = create_payment_intent(
                 amount_minor=totals.grand_total_minor,
                 currency=currency,
                 buyer_email=checkout_input.buyer_email,
                 shared_payment_token=checkout_input.shared_payment_token,
-                metadata={
-                    "purpose": "acp_demo",
-                    "items": json.dumps([item.model_dump() for item in checkout_input.items]),
-                },
+                metadata=metadata_payload,
             )
         except Exception as e:
             error_msg = f"Error creating payment intent: {str(e)}"
@@ -3518,6 +4026,18 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             # Non aggiungere mai prodotti di altre categorie per "riempire" la lista/carosello
             logger.info(f"Tool {tool_name}: Fetching products from MotherDuck and transforming to places")
             products = await get_products_from_motherduck(category=category)
+
+            if criteria and criteria.get("keywords"):
+                strict_filtered = _filter_products_by_strict_type_keywords(
+                    products, criteria["keywords"]
+                )
+                if len(strict_filtered) != len(products):
+                    logger.info(
+                        f"Tool {tool_name}: Applied strict type filter "
+                        f"({len(strict_filtered)}/{len(products)} products kept) "
+                        f"for keywords={criteria['keywords']}"
+                    )
+                products = strict_filtered
             
             # Per electronics-carousel, limita a 6 prodotti se viene passata una categoria
             # IMPORTANTE: Non aggiungere prodotti di altre categorie se il filtro ne trova meno di 6
@@ -3664,6 +4184,23 @@ mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resou
 # For SSE transport (used by ChatGPT SDK), use sse_app()
 # For Streamable HTTP transport, use streamable_http_app()
 app = mcp.sse_app()
+
+# Esegui get_instructions all'avvio del server
+async def _startup_load_instructions() -> None:
+    instructions_path = Path(__file__).resolve().parent.parent / "prompts" / "instructions.md"
+    if not instructions_path.exists():
+        logger.error(f"Startup get_instructions: file not found at {instructions_path}")
+        return
+    try:
+        _ = instructions_path.read_text(encoding="utf-8")
+        logger.info(f"Startup get_instructions: loaded instructions from {instructions_path}")
+    except Exception as exc:
+        logger.error(
+            f"Startup get_instructions: failed to read {instructions_path} - {exc}",
+            exc_info=True,
+        )
+
+app.add_event_handler("startup", _startup_load_instructions)
 
 # Aggiungi middleware CORS all'app (deve essere prima di CSP)
 # Il middleware CORS permette il caricamento di risorse (JS, CSS) da origini diverse
