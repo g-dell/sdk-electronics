@@ -541,6 +541,23 @@ def rank_products_by_criteria(
             if matched_keywords > 0:
                 # Bonus per corrispondenza keyword (riduce lo score)
                 score = max(0, score - (matched_keywords * 5))
+
+        # 5. Priorità per home theater: prima TV/subwoofer/soundbar, poi accessori
+        if _has_home_theater_intent(keywords):
+            combined_text = _normalize_text(
+                f"{product.get('name', '')} {' '.join(_extract_product_categories(product))}"
+            )
+            if _is_accessory_product(product, BUNDLE_ACCESSORY_EXCLUDE_KEYWORDS):
+                score += 120
+
+            if any(kw in combined_text for kw in CROSS_SELL_TV_KEYWORDS):
+                score = max(0, score - 40)
+            if any(kw in combined_text for kw in SOLUTION_BUNDLE_SUBWOOFER_KEYWORDS):
+                score = max(0, score - 25)
+            if any(kw in combined_text for kw in SOLUTION_BUNDLE_SOUNDBAR_KEYWORDS):
+                score = max(0, score - 20)
+            if any(kw in combined_text for kw in CROSS_SELL_AUDIO_KEYWORDS):
+                score = max(0, score - 10)
         
         # Restituisci tupla per ordinamento stabile (score, prezzo, nome)
         return (score, -get_price(product), product.get("name", ""))
@@ -642,7 +659,7 @@ def transform_products_to_places(
     - imageURLs -> thumbnail
     - voto_prodotto_1_5 -> rating (con fallback a 4.5)
     - stock -> stock (numero prodotti disponibili)
-    - coords, city -> generati automaticamente (default San Francisco)
+    - coords, city -> generati automaticamente (default Cascina, PI)
     
     Args:
         products: Lista di prodotti dal database (dizionari Python)
@@ -658,34 +675,21 @@ def transform_products_to_places(
     if criteria:
         products = rank_products_by_criteria(products, criteria)
     
-    # Coordinate di default per San Francisco (dove sono i place attuali in markers.json)
-    # Distribuite in diverse zone della città per varietà visiva
+    # Coordinate di default per Cascina (PI) - posizione statica del negozio
     default_coords = [
-        [-122.4098, 37.8001],  # North Beach
-        [-122.4093, 37.7990],  # North Beach
-        [-122.4255, 37.7613],  # Mission
-        [-122.4388, 37.7775],  # Alamo Square
-        [-122.4077, 37.7990],  # North Beach
-        [-122.4097, 37.7992],  # North Beach
-        [-122.4380, 37.7722],  # Lower Haight
-        [-122.4123, 37.7899],  # Nob Hill
-        [-122.4135, 37.7805],  # SoMa
-        [-122.4019, 37.7818],  # Yerba Buena
-        [-122.4194, 37.7749],  # Mission
-        [-122.4313, 37.7849],  # Western Addition
+        [10.49197675545435, 43.68345261138975],
     ]
     
     # Città di default
     default_cities = [
-        "San Francisco",
-        "North Beach",
-        "Mission",
-        "Alamo Square",
-        "SoMa",
-        "Nob Hill",
-        "Lower Haight",
-        "Yerba Buena",
+        "Cascina (PI)",
     ]
+    
+    # Immagine di fallback per il negozio
+    default_thumbnail_url = (
+        "https://2017.gonews.it/wp-content/uploads/2014/05/"
+        "cascina_navacchio_polo_tecnologico_quarto_lotto.jpg"
+    )
     
     places = []
     seen_ids = set()  # Traccia gli ID già visti per evitare duplicati
@@ -1992,6 +1996,48 @@ def _filter_products_by_name_keywords(
         if any(keyword in name for keyword in normalized_keywords):
             filtered.append(product)
     return filtered
+
+
+_STRICT_TYPE_KEYWORDS = {
+    "laptop",
+    "laptops",
+    "notebook",
+    "ultrabook",
+}
+
+
+def _filter_products_by_strict_type_keywords(
+    products: List[Dict[str, Any]],
+    keywords: List[str],
+) -> List[Dict[str, Any]]:
+    if not products or not keywords:
+        return products
+
+    normalized_keywords = [_normalize_text(kw) for kw in keywords if kw]
+    strict_matches = [
+        type_kw
+        for type_kw in _STRICT_TYPE_KEYWORDS
+        if any(type_kw in keyword for keyword in normalized_keywords)
+    ]
+    if not strict_matches:
+        return products
+
+    filtered = []
+    for product in products:
+        combined_text = _normalize_text(
+            f"{product.get('name', '')} {' '.join(_extract_product_categories(product))}"
+        )
+        if any(type_kw in combined_text for type_kw in strict_matches):
+            filtered.append(product)
+
+    return filtered
+
+
+def _has_home_theater_intent(keywords: List[str]) -> bool:
+    if not keywords:
+        return False
+    normalized = _normalize_text(" ".join([str(kw) for kw in keywords if kw]))
+    return any(_normalize_text(goal) in normalized for goal in SOLUTION_BUNDLE_GOAL_KEYWORDS)
 
 
 def _is_accessory_product(
@@ -3967,6 +4013,18 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             # Non aggiungere mai prodotti di altre categorie per "riempire" la lista/carosello
             logger.info(f"Tool {tool_name}: Fetching products from MotherDuck and transforming to places")
             products = await get_products_from_motherduck(category=category)
+
+            if criteria and criteria.get("keywords"):
+                strict_filtered = _filter_products_by_strict_type_keywords(
+                    products, criteria["keywords"]
+                )
+                if len(strict_filtered) != len(products):
+                    logger.info(
+                        f"Tool {tool_name}: Applied strict type filter "
+                        f"({len(strict_filtered)}/{len(products)} products kept) "
+                        f"for keywords={criteria['keywords']}"
+                    )
+                products = strict_filtered
             
             # Per electronics-carousel, limita a 6 prodotti se viene passata una categoria
             # IMPORTANTE: Non aggiungere prodotti di altre categorie se il filtro ne trova meno di 6

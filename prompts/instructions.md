@@ -209,6 +209,8 @@ I campi **pro** e **contro** sono la base per confronti tecnici.
 - se l’utente chiede **una categoria specifica** (es. laptop), filtra `product-list` su **una sola categoria**
 - i widget devono contenere **solo** quella categoria
 - mescolare categorie diverse è un ERRORE
+ - per richieste di **laptop**, non mostrare accessori o monitor: solo laptop
+ - per richieste di **home theater**, mostra prima componenti essenziali (TV, subwoofer, soundbar) e lascia accessori/cavi/stand **solo dopo** o nel carrello
 
 ### price
 - ordine crescente per prezzo
