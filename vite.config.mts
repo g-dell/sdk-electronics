@@ -209,9 +209,11 @@ export default defineConfig(({}) => ({
   ],
   cacheDir: "node_modules/.vite-react",
   server: {
+    host: true,
     port: 4444,
     strictPort: true,
     cors: true,
+    allowedHosts: "all",
   },
   esbuild: {
     jsx: "automatic",
