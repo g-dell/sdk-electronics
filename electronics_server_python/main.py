@@ -2713,9 +2713,9 @@ async def _list_tools() -> List[types.Tool]:
             name="get_instructions",
             title="Get Instructions",
             description=(
-                "Restituisce il contenuto testuale delle istruzioni (prompt) attualmente utilizzate dal server. "
-                "Usa questo tool quando vuoi vedere quale prompt/instructions il server sta utilizzando. "
-                "Restituisce il testo completo delle istruzioni dal file prompts/instructions.md."
+                "Restituisce il contenuto testuale dei prompt developer attualmente utilizzati dal server. "
+                "Include prompts/developer_core.md e prompts/runtime_context.md. "
+                "Non include il system prompt."
             ),
             inputSchema=deepcopy(EMPTY_TOOL_INPUT_SCHEMA),
             annotations={
@@ -3016,12 +3016,15 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     "Ignoring arguments as this tool does not require input."
                 )
             
-            # Leggi il file prompts/instructions.md
-            # Il file è nella root del progetto, non nella directory electronics_server_python
-            instructions_path = Path(__file__).resolve().parent.parent / "prompts" / "instructions.md"
-            
-            if not instructions_path.exists():
-                error_msg = f"Instructions file not found: {instructions_path}"
+            # Leggi i prompt developer (core + runtime context)
+            base_path = Path(__file__).resolve().parent.parent / "prompts"
+            core_path = base_path / "developer_core.md"
+            runtime_path = base_path / "runtime_context.md"
+
+            missing = [p for p in (core_path, runtime_path) if not p.exists()]
+            if missing:
+                missing_list = ", ".join(str(p) for p in missing)
+                error_msg = f"Developer prompt file(s) not found: {missing_list}"
                 logger.error(f"Tool {tool_name}: {error_msg}")
                 return types.ServerResult(
                     types.CallToolResult(
@@ -3034,10 +3037,19 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                         isError=True,
                     )
                 )
-            
-            # Leggi il contenuto del file
-            instructions_text = instructions_path.read_text(encoding="utf-8")
-            logger.info(f"Tool {tool_name}: Successfully read instructions from {instructions_path}")
+
+            core_text = core_path.read_text(encoding="utf-8")
+            runtime_text = runtime_path.read_text(encoding="utf-8")
+            instructions_text = (
+                "## developer_core.md\n"
+                + core_text
+                + "\n\n## runtime_context.md\n"
+                + runtime_text
+            )
+            logger.info(
+                f"Tool {tool_name}: Successfully read developer prompts from "
+                f"{core_path} and {runtime_path}"
+            )
             
             result = types.ServerResult(
                 types.CallToolResult(
@@ -4187,16 +4199,25 @@ app = mcp.sse_app()
 
 # Esegui get_instructions all'avvio del server
 async def _startup_load_instructions() -> None:
-    instructions_path = Path(__file__).resolve().parent.parent / "prompts" / "instructions.md"
-    if not instructions_path.exists():
-        logger.error(f"Startup get_instructions: file not found at {instructions_path}")
+    base_path = Path(__file__).resolve().parent.parent / "prompts"
+    core_path = base_path / "developer_core.md"
+    runtime_path = base_path / "runtime_context.md"
+    missing = [p for p in (core_path, runtime_path) if not p.exists()]
+    if missing:
+        missing_list = ", ".join(str(p) for p in missing)
+        logger.error(f"Startup get_instructions: file(s) not found: {missing_list}")
         return
     try:
-        _ = instructions_path.read_text(encoding="utf-8")
-        logger.info(f"Startup get_instructions: loaded instructions from {instructions_path}")
+        _ = core_path.read_text(encoding="utf-8")
+        _ = runtime_path.read_text(encoding="utf-8")
+        logger.info(
+            "Startup get_instructions: loaded developer prompts from "
+            f"{core_path} and {runtime_path}"
+        )
     except Exception as exc:
         logger.error(
-            f"Startup get_instructions: failed to read {instructions_path} - {exc}",
+            "Startup get_instructions: failed to read developer prompts - "
+            f"{exc}",
             exc_info=True,
         )
 

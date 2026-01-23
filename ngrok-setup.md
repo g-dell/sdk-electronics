@@ -70,12 +70,32 @@ Apri un nuovo terminale **nella cartella dove hai il `Caddyfile`** ed esegui:
 ```powershell
 C:\Tools\caddy\caddy.exe run --config C:\Tools\caddy\Caddyfile
 ```
+
+oppure
+
+```powershell
+cd ..
+cd ..
+cd tools 
+cd caddy
+.\caddy run 
+```
+
 Ora il tuo sito locale e` su `http://localhost:8080`.
 
 ## Step 8) Esporre la porta 8080 con ngrok
 In un quarto terminale:
 ```powershell
 C:\Tools\ngrok\ngrok.exe http http://localhost:8080
+```
+oppure
+
+```powershell
+cd ..
+cd ..
+cd tools 
+cd ngrok
+.\ngrok http http://localhost:8080
 ```
 Otterrai un URL pubblico del tipo:
 `https://<qualcosa>.ngrok-free.app`
@@ -107,7 +127,7 @@ taskkill /PID <PID> /F
 **Come verificare se un host/porta e` attivo**
 ```powershell
 curl http://localhost:8000
-curl http://localhost:5173
+curl http://localhost:4444
 curl http://localhost:8080
 ```
 
