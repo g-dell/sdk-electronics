@@ -142,6 +142,42 @@ caddy run
 C:\Tools\ngrok\ngrok.exe http http://localhost:8080
 ```
 
+## 1) Vai nella cartella
+```powershell
+cd C:\Projects\sdk-electronics
+```
+## Avvia tutto
+
+```powershell
+.\start-local-terminals.ps1
+```
+
+oppure
+
+```powershell
+.\start-local-terminals.ps1 -BackendBuild
+```
+
+oppure
+
+```powershell
+.\start-local-terminals.ps1 -FrontendBuild
+```
+oppure
+
+```powershell
+.\start-local-terminals.ps1 -BackendBuild -FrontendBuild
+```
+ # Se Caddy / ngrok non sono nel PATH
+
+ Imposta i percorsi solo per questa sessione:
+ ```powershell
+$env:CADDY_PATH="C:\Tools\caddy\caddy.exe"
+$env:NGROK_PATH="C:\Tools\ngrok\ngrok.exe"
+$env:motherduck_token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImhyQHhlZWwudGVjaCIsIm1kUmVnaW9uIjoiYXdzLXVzLWVhc3QtMSIsInNlc3Npb24iOiJoci54ZWVsLnRlY2giLCJwYXQiOiJnSUVKOUVPcHA4RnExOUx1NktKZUhwYk44Zk9aN0N1WV9VR0Y4djgteDFRIiwidXNlcklkIjoiODA3MDM5ZDMtMzA3Ny00ZGY1LWEyZTMtMTk4ZGYzMTMzMTNkIiwiaXNzIjoibWRfcGF0IiwicmVhZE9ubHkiOmZhbHNlLCJ0b2tlblR5cGUiOiJyZWFkX3dyaXRlIiwiaWF0IjoxNzY3NjEzMTUwfQ.Y4_OIRpyrcSelw3_XH0mVip71Ram7czigIrzK7pa9tQ"
+```
+
+
 ## Kill globale 
 ```powershell
 taskkill /IM node.exe /F
@@ -150,3 +186,10 @@ taskkill /IM uvicorn.exe /F
 taskkill /IM caddy.exe /F
 taskkill /IM ngrok.exe /F
 ```
+
+oppure
+
+```powershell
+.\stop-local-terminals.ps1
+```
+Eseguilo da **PowerShell** nella root del progetto.

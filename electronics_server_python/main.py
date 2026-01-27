@@ -15,35 +15,25 @@ MCP Protocol Version: 2024-11-05
 __version__ = "1.0.0"
 
 import os
+import hashlib
 import json
 import uuid
 import logging
 import duckdb
 import re
+import time
+import socket
+import ssl
 from datetime import datetime
-from dotenv import load_dotenv
 from pathlib import Path
 from decimal import Decimal, ROUND_HALF_UP
 
-# Carica il file .env dalla root del progetto (non dalla directory electronics_server_python)
-# __file__ è main.py in electronics_server_python/, quindi parent.parent è la root
-# Prova anche nella directory corrente come fallback
-env_paths = [
-    Path(__file__).resolve().parent.parent / ".env",  # Root del progetto
-    Path.cwd() / ".env",  # Directory corrente
-    Path(__file__).resolve().parent / ".env",  # Directory electronics_server_python (fallback)
-]
-
-env_path = None
-for path in env_paths:
-    if path.exists():
-        env_path = path
-        load_dotenv(dotenv_path=env_path)
-        break
-
-if not env_path:
-    # Prova comunque a caricare dalla directory corrente o dalle variabili d'ambiente di sistema
-    load_dotenv()
+# Ports and paths (overridable via env vars).
+ROOT = Path(__file__).resolve().parent.parent
+BACKEND_PORT = os.environ.get("BACKEND_PORT", "8000")
+FRONTEND_PORT = os.environ.get("FRONTEND_PORT", "3000")
+PROXY_PORT = os.environ.get("PROXY_PORT", "4444")
+CADDYFILE = os.environ.get("CADDYFILE_PATH", str(ROOT / "Caddyfile"))
 
 # Configurazione logging per activity logs
 logging.basicConfig(
@@ -53,18 +43,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Log info sul caricamento del file .env (dopo che logger è stato configurato)
-if env_path:
-    logger.info(f"Loaded .env file from: {env_path}")
-    # Verifica se MOTHERDUCK_TOKEN è presente dopo il caricamento
-    token_after_load = os.getenv("MOTHERDUCK_TOKEN")
-    if token_after_load:
-        logger.info("MOTHERDUCK_TOKEN found in .env file")
-    else:
-        logger.warning("MOTHERDUCK_TOKEN not found in .env file after loading. Check that it exists in the file.")
-else:
-    logger.warning(f".env file not found in any of the searched paths. Environment variables will be read from system environment.")
-    logger.warning(f"Searched paths: {env_paths}")
+# Debug logging (NDJSON) for connection issues.
+DEBUG_LOG_PATH = Path(r"c:\Projects\sdk-electronics\.cursor\debug.log")
+
+
+def _debug_log(hypothesis_id: str, location: str, message: str, data: dict | None = None) -> None:
+    payload = {
+        "sessionId": "debug-session",
+        "runId": "baseline",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data or {},
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        DEBUG_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    except Exception:
+        # Never crash on debug logging.
+        pass
 
 from copy import deepcopy
 from dataclasses import dataclass
@@ -79,7 +78,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from mcp.server.fastmcp import FastMCP
 from starlette.staticfiles import StaticFiles
 from starlette.routing import Mount, Route
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import HTMLResponse as StarletteHTMLResponse, Response
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -160,7 +158,7 @@ class ElectronicsWidget:
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
-def get_motherduck_connection():
+def get_motherduck_connection(retries: int = 5, base_delay: float = 0.5):
     """
     Crea e restituisce una connessione DuckDB al database MotherDuck.
     
@@ -168,24 +166,231 @@ def get_motherduck_connection():
         duckdb.DuckDBPyConnection: Connessione al database MotherDuck.
         
     Raises:
-        ValueError: Se MOTHERDUCK_TOKEN non è configurato come variabile d'ambiente.
+        ValueError: Se motherduck_token non è configurato come variabile d'ambiente.
     """
-    md_token = os.getenv("MOTHERDUCK_TOKEN")
+    # #region agent log
+    _debug_log(
+        "H1",
+        "main.py:get_motherduck_connection",
+        "entry",
+        {
+            "retries": retries,
+            "base_delay": base_delay,
+        },
+    )
+    # #endregion
+    md_token = os.getenv("motherduck_token", "")
+    # #region agent log
+    _debug_log(
+        "H7",
+        "main.py:get_motherduck_connection",
+        "token_state",
+        {
+            "token_present": bool(md_token),
+            "token_has_whitespace": md_token != md_token.strip() if md_token else False,
+            "token_length": len(md_token),
+            "token_startswith_md": md_token.startswith("md_") if md_token else False,
+            "token_startswith_quote": md_token.startswith(("'", '"')) if md_token else False,
+            "token_endswith_quote": md_token.endswith(("'", '"')) if md_token else False,
+        },
+    )
+    # #endregion
     if not md_token:
+        # #region agent log
+        _debug_log(
+            "H2",
+            "main.py:get_motherduck_connection",
+            "token_missing",
+            {
+                "cwd": os.getcwd(),
+                "env_has_motherduck_token": bool(os.getenv("motherduck_token")),
+            },
+        )
+        # #endregion
         raise ValueError(
-            "MOTHERDUCK_TOKEN non trovato nelle variabili d'ambiente. "
-            "Configurare MOTHERDUCK_TOKEN per connettersi a MotherDuck."
+            "motherduck_token non trovato nelle variabili d'ambiente. "
+            "Configurare motherduck_token per connettersi a MotherDuck."
         )
     
     # Connessione a MotherDuck usando il formato md:database_name?motherduck_token=TOKEN
     # Il database è 'app_gpt_elettronica'
     connection_string = f"md:app_gpt_elettronica?motherduck_token={md_token}"
-    con = duckdb.connect(connection_string)
-    
-    # Imposta lo schema di ricerca su 'main' per semplificare le query
-    con.execute("SET search_path TO main;")
-    
-    return con
+    # #region agent log
+    _debug_log(
+        "H3",
+        "main.py:get_motherduck_connection",
+        "pre_connect",
+        {
+            "duckdb_version": getattr(duckdb, "__version__", "unknown"),
+            "db_name": "app_gpt_elettronica",
+            "http_proxy_set": bool(os.getenv("HTTP_PROXY") or os.getenv("http_proxy")),
+            "https_proxy_set": bool(os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")),
+        },
+    )
+    # #endregion
+    # #region agent log
+    try:
+        response = httpx.get("https://motherduck.com", timeout=3.0)
+        status_code = response.status_code
+        error_text = ""
+    except Exception as exc:
+        status_code = None
+        error_text = str(exc)
+    _debug_log(
+        "H8",
+        "main.py:get_motherduck_connection",
+        "motherduck_http_probe",
+        {
+            "status_code": status_code,
+            "error": error_text,
+        },
+    )
+    # #endregion
+    # #region agent log
+    try:
+        addrinfo = socket.getaddrinfo("api.motherduck.com", 443)
+        dns_error = ""
+    except Exception as exc:
+        addrinfo = []
+        dns_error = str(exc)
+    _debug_log(
+        "H9",
+        "main.py:get_motherduck_connection",
+        "motherduck_dns_probe",
+        {
+            "addrinfo_count": len(addrinfo),
+            "error": dns_error,
+        },
+    )
+    # #endregion
+    # #region agent log
+    try:
+        with socket.create_connection(("api.motherduck.com", 443), timeout=3.0):
+            tcp_ok = True
+            tcp_error = ""
+    except Exception as exc:
+        tcp_ok = False
+        tcp_error = str(exc)
+    _debug_log(
+        "H10",
+        "main.py:get_motherduck_connection",
+        "motherduck_tcp_probe",
+        {
+            "tcp_ok": tcp_ok,
+            "error": tcp_error,
+        },
+    )
+    # #endregion
+    # #region agent log
+    _debug_log(
+        "H11",
+        "main.py:get_motherduck_connection",
+        "tls_env_probe",
+        {
+            "ssl_cert_file_set": bool(os.getenv("SSL_CERT_FILE")),
+            "ssl_cert_dir_set": bool(os.getenv("SSL_CERT_DIR")),
+            "requests_ca_bundle_set": bool(os.getenv("REQUESTS_CA_BUNDLE")),
+            "curl_ca_bundle_set": bool(os.getenv("CURL_CA_BUNDLE")),
+        },
+    )
+    # #endregion
+    # #region agent log
+    try:
+        api_response = httpx.get("https://api.motherduck.com", timeout=3.0)
+        api_status = api_response.status_code
+        api_error = ""
+    except Exception as exc:
+        api_status = None
+        api_error = str(exc)
+    _debug_log(
+        "H12",
+        "main.py:get_motherduck_connection",
+        "motherduck_api_http_probe",
+        {
+            "status_code": api_status,
+            "error": api_error,
+        },
+    )
+    # #endregion
+    # #region agent log
+    try:
+        context = ssl.create_default_context()
+        with socket.create_connection(("api.motherduck.com", 443), timeout=3.0) as sock:
+            with context.wrap_socket(sock, server_hostname="api.motherduck.com") as tls_sock:
+                tls_ok = True
+                tls_error = ""
+                alpn = tls_sock.selected_alpn_protocol()
+                tls_version = tls_sock.version()
+    except Exception as exc:
+        tls_ok = False
+        tls_error = str(exc)
+        alpn = None
+        tls_version = None
+    _debug_log(
+        "H13",
+        "main.py:get_motherduck_connection",
+        "motherduck_tls_probe",
+        {
+            "tls_ok": tls_ok,
+            "alpn": alpn,
+            "tls_version": tls_version,
+            "error": tls_error,
+        },
+    )
+    # #endregion
+    last_err: Exception | None = None
+    for attempt in range(retries):
+        try:
+            print("motherduck_token:", "set" if os.getenv("motherduck_token") else "missing")
+            print("cwd:", os.getcwd())
+            # #region agent log
+            _debug_log(
+                "H4",
+                "main.py:get_motherduck_connection",
+                "attempt_connect",
+                {"attempt": attempt + 1, "retries": retries},
+            )
+            # #endregion
+            con = duckdb.connect(connection_string)
+            # Imposta lo schema di ricerca su 'main' per semplificare le query
+            con.execute("SET search_path TO main;")
+            # #region agent log
+            _debug_log(
+                "H5",
+                "main.py:get_motherduck_connection",
+                "connect_ok",
+                {"attempt": attempt + 1},
+            )
+            # #endregion
+            return con
+        except Exception as exc:
+            last_err = exc
+            delay = base_delay * (2 ** attempt)
+            # #region agent log
+            _debug_log(
+                "H6",
+                "main.py:get_motherduck_connection",
+                "connect_error",
+                {
+                    "attempt": attempt + 1,
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                    "delay": delay,
+                },
+            )
+            # #endregion
+            logger.warning(
+                "MotherDuck connection failed (attempt %s/%s): %s. Retrying in %.2fs",
+                attempt + 1,
+                retries,
+                exc,
+                delay,
+            )
+            time.sleep(delay)
+
+    if last_err:
+        raise last_err
+    raise RuntimeError("MotherDuck connection failed with no exception details.")
 
 
 # Mapping delle categorie principali ai tag associati (stesso mapping del frontend)
@@ -619,10 +824,10 @@ async def get_products_from_motherduck(category: str = None):
             
             return products
     except ValueError as e:
-        # Errore di configurazione (es. MOTHERDUCK_TOKEN mancante)
+        # Errore di configurazione (es. motherduck_token mancante)
         logger.warning(
             f"MotherDuck token not configured: {e}. "
-            "Widgets will display empty data until MOTHERDUCK_TOKEN is configured."
+            "Widgets will display empty data until motherduck_token is configured."
         )
         return []
     except Exception as e:
@@ -1026,6 +1231,40 @@ def _split_env_list(value: str | None) -> List[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _get_header(scope, name: str) -> str | None:
+    target = name.lower().encode("latin1")
+    for key, value in scope.get("headers") or []:
+        if key.lower() == target:
+            return value.decode("latin1")
+    return None
+
+
+def _build_cors_headers(
+    origin: str | None,
+    allowed_origins: List[str],
+    *,
+    preflight: bool,
+) -> List[tuple[bytes, bytes]]:
+    headers: List[tuple[bytes, bytes]] = []
+    allow_origin: str | None = None
+
+    if not allowed_origins:
+        allow_origin = "*"
+    elif origin and origin in allowed_origins:
+        allow_origin = origin
+    elif origin:
+        allow_origin = origin
+
+    if allow_origin:
+        headers.append((b"access-control-allow-origin", allow_origin.encode("latin1")))
+
+    headers.append((b"access-control-allow-methods", b"GET, POST, OPTIONS"))
+    headers.append((b"access-control-allow-headers", b"Content-Type, Authorization"))
+    if preflight:
+        headers.append((b"access-control-max-age", b"86400"))
+    return headers
+
+
 def _transport_security_settings() -> TransportSecuritySettings:
     allowed_hosts = _split_env_list(os.getenv("MCP_ALLOWED_HOSTS"))
     allowed_origins = _split_env_list(os.getenv("MCP_ALLOWED_ORIGINS"))
@@ -1038,117 +1277,95 @@ def _transport_security_settings() -> TransportSecuritySettings:
     )
 
 
-class CORSMiddleware(BaseHTTPMiddleware):
+class CORSMiddleware:
     """
     Middleware per aggiungere CORS (Cross-Origin Resource Sharing) headers alle risposte HTTP.
-    
+
     Permette al browser di caricare risorse (JS, CSS) da origini diverse, necessario
     quando il widget viene caricato da ChatGPT che ha un'origine diversa dal server.
     """
-    
-    async def dispatch(self, request: Request, call_next):
-        # Gestisci richieste OPTIONS (preflight) prima di chiamare il prossimo middleware
-        if request.method == "OPTIONS":
-            origin = request.headers.get("origin")
-            allowed_origins = _split_env_list(os.getenv("MCP_ALLOWED_ORIGINS"))
-            
-            response = Response(status_code=200)
-            
-            # Imposta Access-Control-Allow-Origin
-            if not allowed_origins:
-                # Permetti tutte le origini (utile per sviluppo e per ChatGPT)
-                response.headers["Access-Control-Allow-Origin"] = "*"
-            elif origin and origin in allowed_origins:
-                response.headers["Access-Control-Allow-Origin"] = origin
-            elif origin:
-                # Se l'origine non è nella lista ma è presente, la permettiamo comunque
-                # (utile per ChatGPT che può avere origini dinamiche)
-                response.headers["Access-Control-Allow-Origin"] = origin
-            
-            # Header necessari per CORS
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-            response.headers["Access-Control-Max-Age"] = "86400"  # 24 ore
-            
-            return response
-        
-        # Per risposte SSE/streaming, passa direttamente senza modificare headers
-        # Le risposte SSE sono gestite direttamente da sse-starlette e non seguono il normale flusso HTTP
-        if (
-            request.url.path.startswith("/mcp")
-            or request.url.path == "/sse"
-            or request.url.path.startswith("/messages")
-        ):
-            return await call_next(request)
-        
-        # Per tutte le altre richieste, processa normalmente e aggiungi header CORS
-        response = await call_next(request)
-        
-        # Ottieni l'origine della richiesta
-        origin = request.headers.get("origin")
-        
-        # Lista di origini permesse (può essere configurata via env)
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            return await self.app(scope, receive, send)
+
+        path = scope.get("path", "")
+        if path.startswith("/mcp") or path == "/sse" or path.startswith("/messages"):
+            return await self.app(scope, receive, send)
+
+        method = (scope.get("method") or "").upper()
+        origin = _get_header(scope, "origin")
         allowed_origins = _split_env_list(os.getenv("MCP_ALLOWED_ORIGINS"))
-        
-        # Imposta Access-Control-Allow-Origin
-        if not allowed_origins:
-            # Permetti tutte le origini (utile per sviluppo e per ChatGPT)
-            response.headers["Access-Control-Allow-Origin"] = "*"
-        elif origin and origin in allowed_origins:
-            # Permetti solo origini specificate
-            response.headers["Access-Control-Allow-Origin"] = origin
-        elif origin:
-            # Se l'origine non è nella lista ma è presente, la permettiamo comunque
-            # (utile per ChatGPT che può avere origini dinamiche)
-            response.headers["Access-Control-Allow-Origin"] = origin
-        
-        # Header necessari per CORS
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-        
-        return response
+
+        if method == "OPTIONS":
+            headers = _build_cors_headers(origin, allowed_origins, preflight=True)
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": headers,
+                }
+            )
+            await send({"type": "http.response.body", "body": b""})
+            return
+
+        async def send_wrapper(message):
+            if message.get("type") == "http.response.start":
+                headers = list(message.get("headers", []))
+                headers.extend(_build_cors_headers(origin, allowed_origins, preflight=False))
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
 
 
-class CSPMiddleware(BaseHTTPMiddleware):
+class CSPMiddleware:
     """
     Middleware per aggiungere Content Security Policy (CSP) headers alle risposte HTTP.
-    
+
     CSP previene attacchi XSS limitando le risorse che possono essere caricate ed eseguite.
     """
-    
-    async def dispatch(self, request: Request, call_next):
-        # Per risposte SSE/streaming, passa direttamente senza modificare headers
-        # Le risposte SSE sono gestite direttamente da sse-starlette e non seguono il normale flusso HTTP
-        if (
-            request.url.path.startswith("/mcp")
-            or request.url.path == "/sse"
-            or request.url.path.startswith("/messages")
-        ):
-            return await call_next(request)
-        
-        response = await call_next(request)
-        
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            return await self.app(scope, receive, send)
+
+        path = scope.get("path", "")
+        if path.startswith("/mcp") or path == "/sse" or path.startswith("/messages"):
+            return await self.app(scope, receive, send)
+
         # Costruisci la policy CSP come stringa singola per evitare problemi con h11
         # h11 (usato da uvicorn) è molto rigoroso nella validazione degli header HTTP
-        csp_policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://chat.openai.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-        
-        # Aggiungi header CSP alla risposta
-        # Nota: se h11 continua a rifiutare l'header, potrebbe essere necessario
-        # rimuovere temporaneamente il middleware CSP o usare un approccio alternativo
+        csp_policy = (
+            "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
+            "font-src 'self' data:; connect-src 'self' https://chat.openai.com; "
+            "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        )
+
         try:
-            response.headers["Content-Security-Policy"] = csp_policy
-        except Exception as e:
-            # Se h11 rifiuta l'header, loggiamo l'errore ma non blocchiamo la risposta
-            # Questo permette al server di funzionare anche senza CSP
-            logger.warning(f"Failed to set CSP header: {e}")
-        
-        # Aggiungi anche header X-Content-Type-Options per sicurezza aggiuntiva
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        
-        # Aggiungi header X-Frame-Options per prevenire clickjacking (redundante con CSP frame-ancestors ma utile per browser vecchi)
-        response.headers["X-Frame-Options"] = "DENY"
-        
-        return response
+            csp_header = (b"content-security-policy", csp_policy.encode("ascii"))
+        except Exception as exc:
+            logger.warning(f"Failed to encode CSP header: {exc}")
+            csp_header = None
+
+        async def send_wrapper(message):
+            if message.get("type") == "http.response.start":
+                headers = list(message.get("headers", []))
+                if csp_header:
+                    headers.append(csp_header)
+                headers.append((b"x-content-type-options", b"nosniff"))
+                headers.append((b"x-frame-options", b"DENY"))
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
 
 
 async def proxy_image_handler(request: Request):
@@ -2916,6 +3133,40 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
     import re
     
     base_url = os.getenv("BASE_URL", "").rstrip("/")
+    # #region agent log
+    _debug_log(
+        "H20",
+        "main.py:_handle_read_resource",
+        "entry",
+        {
+            "uri": str(req.params.uri),
+            "widget_id": widget.identifier,
+            "base_url_set": bool(base_url),
+            "base_url": base_url,
+        },
+    )
+    # #endregion
+
+    # #region agent log
+    try:
+        asset_candidates = re.findall(r'["\']([^"\']+\.(?:js|css))["\']', html_content)
+        normalized = [c.lstrip("/") for c in asset_candidates][:5]
+        existence = [
+            {"path": p, "exists": (ASSETS_DIR / p.split("/")[-1]).exists()}
+            for p in normalized
+        ]
+    except Exception as exc:
+        existence = [{"error": str(exc)}]
+    _debug_log(
+        "H23",
+        "main.py:_handle_read_resource",
+        "asset_candidates",
+        {
+            "candidate_count": len(asset_candidates) if "asset_candidates" in locals() else 0,
+            "samples": existence,
+        },
+    )
+    # #endregion
     
     def fix_asset_path(match):
         attr, path = match.group(1), match.group(2)
@@ -2930,15 +3181,40 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
             return f'{attr}="/{path}"'
     
     # Pattern 1: localhost URLs (with or without assets/)
+    # #region agent log
+    _debug_log(
+        "H21",
+        "main.py:_handle_read_resource",
+        "pattern_matches",
+        {
+            "localhost_matches": len(re.findall(r'(src|href)=["\']http://localhost:\\d+/(?:assets/)?([^"\']+\\.(?:js|css))["\']', html_content)),
+            "absolute_matches": len(re.findall(r'(src|href)=["\']/([^"\']+\\.(?:js|css))["\']', html_content)),
+            "base_url_matches": len(re.findall(rf'(src|href)=["\']{re.escape(base_url)}/(?!assets/)([^"\']+\\.(?:js|css))["\']', html_content)) if base_url else 0,
+        },
+    )
+    # #endregion
+    # #region agent log
+    _debug_log(
+        "H24",
+        "main.py:_handle_read_resource",
+        "html_probe",
+        {
+            "contains_localhost": "localhost" in html_content,
+            "contains_assets": "assets/" in html_content,
+            "contains_quote": '"' in html_content or "'" in html_content,
+            "snippet": html_content[:200],
+        },
+    )
+    # #endregion
     html_content = re.sub(
-        r'(src|href)="http://localhost:\d+/([^"]+\.(js|css))"',
+        r'(src|href)=["\']http://localhost:\d+/(?:assets/)?([^"\']+\.(?:js|css))["\']',
         fix_asset_path,
         html_content
     )
     
     # Pattern 2: Absolute root paths
     html_content = re.sub(
-        r'(src|href)="/([^"]+\.(js|css))"',
+        r'(src|href)=["\']/([^"\']+\.(?:js|css))["\']',
         fix_asset_path,
         html_content
     )
@@ -2946,10 +3222,21 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
     # Pattern 3: BASE_URL paths (if set)
     if base_url:
         html_content = re.sub(
-            rf'(src|href)="{re.escape(base_url)}/(?!assets/)([^"]+\.(js|css))"',
+            rf'(src|href)=["\']{re.escape(base_url)}/(?!assets/)([^"\']+\\.(?:js|css))["\']',
             fix_asset_path,
             html_content
         )
+
+    # #region agent log
+    _debug_log(
+        "H22",
+        "main.py:_handle_read_resource",
+        "rewrite_done",
+        {
+            "html_length": len(html_content),
+        },
+    )
+    # #endregion
 
     # Inject server base URL for proxy configuration
     # This allows the frontend to know the server URL for proxy requests
@@ -3975,7 +4262,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 logger.warning(
                     f"Tool {tool_name}: No products retrieved from MotherDuck. "
                     "Widget will display empty products list. "
-                    "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
+                    "Check previous logs for errors (e.g., pandas missing, motherduck_token not configured, or database connection issues)."
                 )
             else:
                 logger.info(f"Tool {tool_name}: Retrieved {product_count} products from MotherDuck")
@@ -4012,7 +4299,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 logger.warning(
                     f"Tool {tool_name}: No products retrieved from MotherDuck. "
                     "Widget will display empty albums list. "
-                    "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
+                    "Check previous logs for errors (e.g., pandas missing, motherduck_token not configured, or database connection issues)."
                 )
             else:
                 logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {album_count} albums")
@@ -4085,7 +4372,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                 logger.warning(
                     f"Tool {tool_name}: No products retrieved from MotherDuck. "
                     "Widget will display empty places list. "
-                    "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
+                    "Check previous logs for errors (e.g., pandas missing, motherduck_token not configured, or database connection issues)."
                 )
             else:
                 logger.info(f"Tool {tool_name}: Retrieved {len(products)} products, transformed to {place_count} places")
@@ -4195,13 +4482,56 @@ mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resou
 # Expose the FastAPI app for uvicorn
 # For SSE transport (used by ChatGPT SDK), use sse_app()
 # For Streamable HTTP transport, use streamable_http_app()
-app = mcp.sse_app()
+def _with_initial_sse_event(sse_app):
+    async def _wrapped(scope, receive, send):
+        if scope.get("type") != "http":
+            return await sse_app(scope, receive, send)
+
+        path = scope.get("path", "")
+        method = scope.get("method", "")
+        is_sse_path = path.endswith("/sse") or path.endswith("/mcp")
+        if method != "GET" or not is_sse_path:
+            return await sse_app(scope, receive, send)
+
+        injected = False
+        started = False
+
+        async def send_wrapper(message):
+            nonlocal injected, started
+            if message["type"] == "http.response.start":
+                started = True
+                await send(message)
+                return
+            if message["type"] == "http.response.body" and started and not injected:
+                injected = True
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": b"event: status\ndata: starting\n\n",
+                        "more_body": True,
+                    }
+                )
+            await send(message)
+
+        await sse_app(scope, receive, send_wrapper)
+
+    return _wrapped
+
+
+sse = _with_initial_sse_event(mcp.sse_app())
+app = FastAPI()
+
+# Supporta entrambe le basi che i client provano spesso
+app.mount("/", sse)       # root
+app.mount("/sse", sse)    # /sse
 
 # Esegui get_instructions all'avvio del server
 async def _startup_load_instructions() -> None:
     base_path = Path(__file__).resolve().parent.parent / "prompts"
     core_path = base_path / "developer_core.md"
     runtime_path = base_path / "runtime_context.md"
+    print("motherduck_token:", "set" if os.getenv("motherduck_token") else "missing")
+    print("cwd:", os.getcwd())
     missing = [p for p in (core_path, runtime_path) if not p.exists()]
     if missing:
         missing_list = ", ".join(str(p) for p in missing)
@@ -4316,7 +4646,7 @@ if ASSETS_DIR.exists():
 else:
     logger.warning(f"Assets directory not found at {ASSETS_DIR}. Static files will not be served.")
 
-# Add routes using Starlette's add_route (since sse_app() returns a Starlette app, not FastAPI)
+# Add routes using FastAPI's add_route
 app.add_route("/", root_handler, methods=["GET"])
 app.add_route("/health", health_handler, methods=["GET"])
 app.add_route("/proxy-image", proxy_image_handler, methods=["GET"])
@@ -4328,7 +4658,7 @@ if __name__ == "__main__":
     Permette di eseguire il server direttamente con: python main.py
     Per produzione, usa invece: uvicorn electronics_server_python.main:app --host 0.0.0.0 --port $PORT
     """
-    port = int(os.getenv("PORT", "8000"))
+    port = int(os.getenv("PORT", BACKEND_PORT))
     host = os.getenv("HOST", "127.0.0.1")
     
     logger.info(f"Starting server on {host}:{port}")

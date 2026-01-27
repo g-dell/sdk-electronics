@@ -1,0 +1,19 @@
+{
+  auto_https off
+}
+
+:4444 {
+  @api path /messages* /whatever-altro*
+  reverse_proxy @api localhost:8000
+
+  @sse path /sse*
+  reverse_proxy @sse localhost:8000 {
+    flush_interval -1
+    header_up Accept-Encoding identity
+    transport http {
+      versions 1.1
+    }
+  }
+
+  reverse_proxy localhost:3000
+}

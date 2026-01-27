@@ -65,7 +65,7 @@ Cross-origin requests are allowed so you can drive the server from local tooling
 
 ## Environment Variables
 
-- **MOTHERDUCK_TOKEN** (required): MotherDuck authentication token for accessing the `app_gpt_elettronica` database
+- **motherduck_token** (required): MotherDuck authentication token for accessing the `app_gpt_elettronica` database
 - **MCP_ALLOWED_HOSTS** (optional): Comma-separated list of allowed hosts for Transport Security (e.g., `sdk-electronics.onrender.com`)
 - **MCP_ALLOWED_ORIGINS** (optional): Comma-separated list of allowed origins for CORS (e.g., `https://chat.openai.com,https://sdk-electronics.onrender.com`)
 

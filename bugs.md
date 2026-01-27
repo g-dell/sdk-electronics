@@ -67,13 +67,13 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
 
 ### File .env non trovato dal server Python
 - [x] **Bug .env - File .env non caricato correttamente**: [2026-01-09] Il server Python non riusciva a trovare il file `.env` nella root del progetto quando veniva eseguito. Il problema era che `load_dotenv()` cercava il file nella directory corrente di lavoro invece che nella root del progetto, causando errori quando il server veniva eseguito da directory diverse.
-  - **Come si manifesta**: Il server Python non legge le variabili d'ambiente dal file `.env`, causando errori come "MOTHERDUCK_TOKEN non trovato" anche se il file `.env` esiste. Questo causa il fallimento della connessione a MotherDuck.
+  - **Come si manifesta**: Il server Python non legge le variabili d'ambiente dal file `.env`, causando errori come "motherduck_token non trovato" anche se il file `.env` esiste. Questo causa il fallimento della connessione a MotherDuck.
   - **Sezione correlata**: `electronics_server_python/main.py` - caricamento variabili d'ambiente (riga 23)
   - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
 
-### MOTHERDUCK_TOKEN non configurato nel file .env
-- [x] **Bug .env - MOTHERDUCK_TOKEN mancante**: [2026-01-09] Il file `.env` conteneva `MOTHERDUCK_KEY` ma il codice Python cercava `MOTHERDUCK_TOKEN`. Questo causava errori di configurazione quando il server tentava di connettersi a MotherDuck, anche se il file `.env` veniva caricato correttamente.
-  - **Come si manifesta**: Errori nei log del server: "MotherDuck configuration error: MOTHERDUCK_TOKEN non trovato nelle variabili d'ambiente". Il server restituisce 0 prodotti dal database anche se il token è presente ma con un nome diverso.
+### motherduck_token non configurato nel file .env
+- [x] **Bug .env - motherduck_token mancante**: [2026-01-09] Il file `.env` conteneva `MOTHERDUCK_KEY` ma il codice Python cercava `motherduck_token`. Questo causava errori di configurazione quando il server tentava di connettersi a MotherDuck, anche se il file `.env` veniva caricato correttamente.
+  - **Come si manifesta**: Errori nei log del server: "MotherDuck configuration error: motherduck_token non trovato nelle variabili d'ambiente". Il server restituisce 0 prodotti dal database anche se il token è presente ma con un nome diverso.
   - **Sezione correlata**: `electronics_server_python/main.py` - funzione `get_motherduck_connection()` (riga 80), file `.env` nella root del progetto
   - **Stato**: ✅ Risolto (vedi sezione "Bug risolti")
 
@@ -232,18 +232,18 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
     2. Il file `.env` deve essere posizionato nella root del progetto (`c:\Projects\sdk-electronics\.env`), non in `electronics_server_python/`
   - **Verificato**: [2026-01-09] Il server Python ora trova correttamente il file `.env` nella root del progetto. Le variabili d'ambiente vengono caricate correttamente indipendentemente dalla directory di lavoro corrente.
 
-### MOTHERDUCK_TOKEN non configurato nel file .env
-- [x] **Bug .env - MOTHERDUCK_TOKEN mancante**: [2026-01-09]
-  - **Bug trovato**: [2026-01-09] Il file `.env` conteneva `MOTHERDUCK_KEY` ma il codice Python cercava `MOTHERDUCK_TOKEN`. Questo causava errori nei log: "MotherDuck configuration error: MOTHERDUCK_TOKEN non trovato nelle variabili d'ambiente. Configurare MOTHERDUCK_TOKEN per connettersi a MotherDuck." Il server restituiva 0 prodotti dal database anche se un token era presente nel file `.env`.
-  - **Bug risolto**: [2026-01-09] Aggiunto `MOTHERDUCK_TOKEN` al file `.env` con lo stesso valore di `MOTHERDUCK_KEY`. Il file `.env` ora contiene entrambe le variabili per compatibilità.
+### motherduck_token non configurato nel file .env
+- [x] **Bug .env - motherduck_token mancante**: [2026-01-09]
+  - **Bug trovato**: [2026-01-09] Il file `.env` conteneva `MOTHERDUCK_KEY` ma il codice Python cercava `motherduck_token`. Questo causava errori nei log: "MotherDuck configuration error: motherduck_token non trovato nelle variabili d'ambiente. Configurare motherduck_token per connettersi a MotherDuck." Il server restituiva 0 prodotti dal database anche se un token era presente nel file `.env`.
+  - **Bug risolto**: [2026-01-09] Aggiunto `motherduck_token` al file `.env` con lo stesso valore di `MOTHERDUCK_KEY`. Il file `.env` ora contiene entrambe le variabili per compatibilità.
   - **Soluzione applicata**:
     1. Verificato il contenuto del file `.env` che conteneva:
        - `MOTHERDUCK_KEY=...` (già presente)
        - `MOTHERDUCK_DB_NAME=app_gpt_elettronica` (già presente)
-    2. Aggiunto `MOTHERDUCK_TOKEN=...` al file `.env` con lo stesso valore di `MOTHERDUCK_KEY`
+    2. Aggiunto `motherduck_token=...` al file `.env` con lo stesso valore di `MOTHERDUCK_KEY`
     3. Il file `.env` ora contiene tutte e tre le variabili necessarie
-  - **Nota**: Il codice Python cerca specificamente `MOTHERDUCK_TOKEN` (riga 80 in `main.py`), quindi questa variabile è obbligatoria nel file `.env`. `MOTHERDUCK_KEY` può rimanere per compatibilità con altri tool o script.
-  - **Verificato**: [2026-01-09] Il file `.env` ora contiene `MOTHERDUCK_TOKEN` e il server Python può leggere correttamente il token. Il server ora si connette correttamente a MotherDuck quando viene eseguito.
+  - **Nota**: Il codice Python cerca specificamente `motherduck_token` (riga 80 in `main.py`), quindi questa variabile è obbligatoria nel file `.env`. `MOTHERDUCK_KEY` può rimanere per compatibilità con altri tool o script.
+  - **Verificato**: [2026-01-09] Il file `.env` ora contiene `motherduck_token` e il server Python può leggere correttamente il token. Il server ora si connette correttamente a MotherDuck quando viene eseguito.
 
 ### python-dotenv mancante nei requirements.txt
 - [x] **Bug Requirements - python-dotenv non dichiarato**: [2026-01-09]
@@ -302,7 +302,7 @@ Questo documento traccia tutti i bug trovati, le loro risoluzioni e le verifiche
     - Lista vuota perché il database è effettivamente vuoto → comportamento normale
   - **Soluzione applicata**:
     1. Modificati i warning in `_call_tool_request` per tool `product-list`, `electronics-albums`, e widget `places` (electronics-carousel, electronics-map, electronics-list, mixed-auth-search)
-    2. Aggiunto messaggio esplicativo: "Check previous logs for errors (e.g., pandas missing, MOTHERDUCK_TOKEN not configured, or database connection issues)."
+    2. Aggiunto messaggio esplicativo: "Check previous logs for errors (e.g., pandas missing, motherduck_token not configured, or database connection issues)."
   - **File modificati**: `electronics_server_python/main.py` (righe ~987, ~1015, ~1047)
   - **Errore nei log**: Quando c'è un errore (es. pandas mancante), si vede:
     ```

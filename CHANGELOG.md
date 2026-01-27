@@ -52,5 +52,5 @@ e questo progetto aderisce a [Semantic Versioning](https://semver.org/lang/it/).
 
 ### Note
 - Versione iniziale del server
-- Richiede `MOTHERDUCK_TOKEN` come variabile d'ambiente obbligatoria
+- Richiede `motherduck_token` come variabile d'ambiente obbligatoria
 - Supporta MCP Protocol versione 2024-11-05 (Current)

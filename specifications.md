@@ -173,18 +173,18 @@ Questo documento descrive i passaggi necessari per sostituire i prodotti attuali
 
 - [x]  **Eseguire la build del frontend**: Utilizza i comandi di `pnpm` o `npm` per compilare il frontend, come specificato in `package.json` (es. `pnpm run build`). Questo genererà i file HTML e JavaScript necessari per i widget.
 - [x]  **Avviare il server Python**: Esegui il backend Python che serve i widget.
-  - **IMPORTANTE - Integrazione MotherDuck**: Il server DEVE essere configurato con MotherDuck per funzionare correttamente. Il server usa l'MCP server di MotherDuck e richiede la variabile d'ambiente `MOTHERDUCK_TOKEN` per:
+  - **IMPORTANTE - Integrazione MotherDuck**: Il server DEVE essere configurato con MotherDuck per funzionare correttamente. Il server usa l'MCP server di MotherDuck e richiede la variabile d'ambiente `motherduck_token` per:
     - Connettere al database MotherDuck (`md:app_gpt_elettronica`)
     - Eseguire il tool `product-list` che recupera prodotti dalla tabella `prodotti_xeel_shop`
-    - Senza `MOTHERDUCK_TOKEN`, il tool `product-list` non funzionerà e solleverà un `ValueError` quando viene chiamato
+    - Senza `motherduck_token`, il tool `product-list` non funzionerà e solleverà un `ValueError` quando viene chiamato
   - **Configurazione richiesta**:
-    - Variabile d'ambiente obbligatoria: `MOTHERDUCK_TOKEN` (token di autenticazione MotherDuck)
+    - Variabile d'ambiente obbligatoria: `motherduck_token` (token di autenticazione MotherDuck)
     - Database: `app_gpt_elettronica`
     - Schema: `main`
     - Tabella: `prodotti_xeel_shop`
   - **Integrazione MotherDuck**: [2026-01-08] Il server usa DuckDB direttamente per connettersi a MotherDuck (riga 47-65 in `main.py`) tramite `duckdb.connect(f"md:app_gpt_elettronica?motherduck_token={md_token}")`. Questo approccio funziona correttamente e permette al server di recuperare i prodotti dal database MotherDuck.
     - **Implementazione**: L'integrazione è implementata direttamente nel progetto. La funzione `get_motherduck_connection()` gestisce la connessione a MotherDuck usando DuckDB, e `get_products_from_motherduck()` recupera i prodotti dalla tabella `prodotti_xeel_shop`.
-    - **Stato**: Funzionante. Il server richiede `MOTHERDUCK_TOKEN` come variabile d'ambiente obbligatoria per funzionare correttamente.
+  - **Stato**: Funzionante. Il server richiede `motherduck_token` come variabile d'ambiente obbligatoria per funzionare correttamente.
 
 ## 4. Verifica conformità architettura MCP
 
@@ -212,7 +212,7 @@ Questa sezione verifica che il progetto rispetti i principi architetturali MCP s
 #### 4.0.3 Strict Security Boundaries
 - [x] **Accesso limitato al contesto**: Il server accede solo ai dati necessari
   - **Nota**: Per verifiche sui permessi MotherDuck, vedere `bugs.md` sezione "Verifiche da fare - Architettura MCP"
-  - **Integrazione MotherDuck**: Il server DEVE avere `MOTHERDUCK_TOKEN` configurato per funzionare. Il server attualmente usa DuckDB per connettersi direttamente a MotherDuck (`md:app_gpt_elettronica`) e recupera prodotti dalla tabella `prodotti_xeel_shop` nello schema `main`. Senza il token, `get_motherduck_connection()` solleverà un `ValueError`.
+  - **Integrazione MotherDuck**: Il server DEVE avere `motherduck_token` configurato per funzionare. Il server attualmente usa DuckDB per connettersi direttamente a MotherDuck (`md:app_gpt_elettronica`) e recupera prodotti dalla tabella `prodotti_xeel_shop` nello schema `main`. Senza il token, `get_motherduck_connection()` solleverà un `ValueError`.
   - **PROBLEMA IDENTIFICATO - Integrazione MCP Server**: [2026-01-08] Il server usa DuckDB direttamente (riga 47-65) invece di integrarsi con l'MCP server di MotherDuck. Secondo il repository di riferimento `mcp-motherduck-medicair`, il server dovrebbe comporsi con l'MCP server di MotherDuck o usare il tool `query` dell'MCP server invece di DuckDB diretto.
     - **Stato attuale**: `get_motherduck_connection()` usa `duckdb.connect(f"md:app_gpt_elettronica?motherduck_token={md_token}")` direttamente
     - **Dovrebbe essere**: Il server dovrebbe usare l'MCP server di MotherDuck (come `mcp-server-medicair` o `mcp.server.motherduck`) per eseguire query SQL
@@ -250,7 +250,7 @@ Questa sezione verifica che il progetto rispetti i principi architetturali MCP s
   - Stato attuale: Implementato in `_list_tools()`, `_list_resources()`, `_list_resource_templates()`
 - [x] **Operazione indipendente**: Verificare che il server operi indipendentemente
   - Stato attuale: Il server è indipendente in termini di logica MCP, ma dipende da MotherDuck per i dati dei prodotti. La dipendenza da MotherDuck è necessaria per il funzionamento del tool `product-list`.
-  - **IMPORTANTE**: Il server DEVE avere MotherDuck configurato (`MOTHERDUCK_TOKEN`) per funzionare correttamente. Il tool `product-list` è una funzionalità core del server e richiede l'integrazione con MotherDuck. Senza MotherDuck, il server non può recuperare i prodotti elettronici dal database. La casella può rimanere spuntata.
+  - **IMPORTANTE**: Il server DEVE avere MotherDuck configurato (`motherduck_token`) per funzionare correttamente. Il tool `product-list` è una funzionalità core del server e richiede l'integrazione con MotherDuck. Senza MotherDuck, il server non può recuperare i prodotti elettronici dal database. La casella può rimanere spuntata.
 - [x] **Rispetto security constraints**: Il server rispetta i vincoli di sicurezza
   - Stato attuale: Implementato con Transport Security e validazione input
 
@@ -1075,10 +1075,10 @@ Questa sezione verifica che il client/widget rispetti tutte le linee guida MCP C
       - **Implementato**: [2026-01-08] Aggiunta variabile `app = mcp.sse_app()` alla fine di `electronics_server_python/main.py` per esporre l'app FastAPI per uvicorn. Il server usa FastMCP con SSE transport per compatibilità con ChatGPT SDK.
       - **Nota**: Il comando usa `uvicorn` con il modulo `electronics_server_python.main` e la variabile `app` esposta. Il server personalizzato integra MotherDuck direttamente usando DuckDB.
       - **Verificare**: Il comando deve essere testato su Render per confermare che funziona correttamente.
-    - [ ]  **Variabili d'ambiente**: Aggiungi `MOTHERDUCK_TOKEN` (con il tuo token), `MCP_ALLOWED_HOSTS` (deve includere `sdk-electronics.onrender.com`), `MCP_ALLOWED_ORIGINS` (deve includere `https://chat.openai.com` e `https://sdk-electronics.onrender.com`) e altre variabili necessarie.
-      - **IMPORTANTE**: [2026-01-08] `MOTHERDUCK_TOKEN` è OBBLIGATORIO per il funzionamento del server. Il server DEVE avere MotherDuck configurato perché integra MotherDuck direttamente usando DuckDB per recuperare i prodotti elettronici. Senza questo token, il tool `product-list` non funzionerà.
+    - [ ]  **Variabili d'ambiente**: Aggiungi `motherduck_token` (con il tuo token), `MCP_ALLOWED_HOSTS` (deve includere `sdk-electronics.onrender.com`), `MCP_ALLOWED_ORIGINS` (deve includere `https://chat.openai.com` e `https://sdk-electronics.onrender.com`) e altre variabili necessarie.
+      - **IMPORTANTE**: [2026-01-08] `motherduck_token` è OBBLIGATORIO per il funzionamento del server. Il server DEVE avere MotherDuck configurato perché integra MotherDuck direttamente usando DuckDB per recuperare i prodotti elettronici. Senza questo token, il tool `product-list` non funzionerà.
       - **Variabili richieste**:
-        - `MOTHERDUCK_TOKEN` (OBBLIGATORIO): Token di autenticazione MotherDuck per accedere al database `app_gpt_elettronica`
+        - `motherduck_token` (OBBLIGATORIO): Token di autenticazione MotherDuck per accedere al database `app_gpt_elettronica`
         - `MCP_ALLOWED_HOSTS`: Deve includere `sdk-electronics.onrender.com` per Transport Security
         - `MCP_ALLOWED_ORIGINS`: Deve includere `https://chat.openai.com` e `https://sdk-electronics.onrender.com` per CORS
 
